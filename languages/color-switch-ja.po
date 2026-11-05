@@ -12,20 +12,11 @@ msgstr "（0で不透明、100で完全透明）"
 msgid "A preset stores the current rules (including their On/Off states) and exceptions. Button settings are not included."
 msgstr "プリセットには現在のルール（有効チェックの状態も含む）と例外指定が保存されます。ボタンの設定は含まれません。"
 
-msgid "A preset stores the current rules and exceptions. Button settings are not included."
-msgstr "プリセットには現在のルールと例外指定が保存されます。ボタンの設定は含まれません。"
-
 msgid "A theme-independent color scheme (dark mode) toggle plugin. Everything is a rule: selector × colors, with exceptions, memos and user presets."
 msgstr "テーマに依存しないカラースキーム（ダークモード）切替プラグイン。すべてがルール：セレクタ×色の組み合わせに、例外指定・メモ・ユーザープリセットを備えます。"
 
 msgid "Add row"
 msgstr "行を追加"
-
-msgid "Appears on the button that switches to dark mode."
-msgstr "ダークモードに切り替えるボタンに表示されます。"
-
-msgid "Appears on the button that switches to light mode."
-msgstr "ライトモードに切り替えるボタンに表示されます。"
 
 msgid "Apply"
 msgstr "適用"
@@ -36,13 +27,10 @@ msgstr "プリセットの適用に失敗しました。保存内容を確認で
 msgid "Auto (emoji)"
 msgstr "自動切替（絵文字）"
 
-msgid "Auto (follow the OS setting)"
-msgstr "自動（OSの設定に従う）"
-
 msgid "Auto (symbols)"
 msgstr "自動切替（記号）"
 
-msgid "Automatically switch when the OS is in dark mode"
+msgid "Auto-switch when the OS is in dark mode"
 msgstr "OSがダークモードの場合は自動スイッチ"
 
 msgid "Background"
@@ -63,12 +51,6 @@ msgstr "右下（フローティング）"
 msgid "Button"
 msgstr "ボタン"
 
-msgid "Button background"
-msgstr "ボタンの背景色"
-
-msgid "Button icon color"
-msgstr "ボタンのアイコン色"
-
 msgid "Button shape"
 msgstr "ボタンの形状"
 
@@ -86,12 +68,6 @@ msgstr "角丸の半径"
 
 msgid "Custom"
 msgstr "カスタム"
-
-msgid "Custom icon"
-msgstr "カスタムアイコン"
-
-msgid "Dark"
-msgstr "ダーク"
 
 msgid "Default: %s"
 msgstr "初期値: %s"
@@ -165,17 +141,11 @@ msgstr "インポートしたプリセットは上の一覧に追加されます
 msgid "Initial display"
 msgstr "初期表示"
 
-msgid "Initial mode"
-msgstr "初期モード"
-
 msgid "Leave a color empty to use the normal-state color."
 msgstr "色を空欄にすると通常時と同じ色になります。"
 
 msgid "Leave empty to use the theme font. A CSS font-family value, e.g. \"Font Awesome 6 Free\", sans-serif."
 msgstr "空欄にするとテーマのフォントを使います。CSSのfont-family形式で指定できます（例: \"Font Awesome 6 Free\", sans-serif）。"
-
-msgid "Light"
-msgstr "ライト"
 
 msgid "Memo"
 msgstr "メモ"
@@ -249,12 +219,6 @@ msgstr "セレクタ"
 msgid "Settings"
 msgstr "設定"
 
-msgid "Shown in dark mode"
-msgstr "ダーク時に表示"
-
-msgid "Shown in light mode"
-msgstr "ライト時に表示"
-
 msgid "Square"
 msgstr "四角"
 
@@ -266,9 +230,6 @@ msgstr "スイッチ時"
 
 msgid "Switched state colors"
 msgstr "スイッチ時の色"
-
-msgid "Text"
-msgstr "テキスト"
 
 msgid "Text color"
 msgstr "文字色"
