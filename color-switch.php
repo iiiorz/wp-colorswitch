@@ -45,12 +45,20 @@ add_action('init', function () {
 
 /* ---------------- Text encoding (utf8mb3-safe) ---------------- */
 
-function csw_txt_encode($v) { return 'b64:' . base64_encode((string) $v); }
+/* An empty value is stored as an empty string, never as a bare 'b64:'
+   marker (which would otherwise show up in form fields as-is). */
+function csw_txt_encode($v) {
+    $v = (string) $v;
+    if ($v === '') return '';
+    return 'b64:' . base64_encode($v);
+}
 function csw_txt_decode($v) {
     $guard = 0;
     while (is_string($v) && strpos($v, 'b64:') === 0 && $guard < 3) {
-        $d = base64_decode(substr($v, 4), true);
-        if ($d === false || $d === '') break;
+        $rest = substr($v, 4);
+        if ($rest === '') { $v = ''; break; } // a bare 'b64:' marker means an empty value
+        $d = base64_decode($rest, true);
+        if ($d === false) break;
         $v = $d;
         $guard++;
     }
