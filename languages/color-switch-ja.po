@@ -1,0 +1,220 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: ColorSwitch 1.1.0\n"
+"Language: ja\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A preset stores the current rules and exceptions. Button settings are not included."
+msgstr "プリセットには現在のルールと例外指定が保存されます。ボタンの設定は含まれません。"
+
+msgid "A theme-independent color scheme (dark mode) toggle plugin. Everything is a rule: selector × colors, with exceptions, memos and user presets."
+msgstr "テーマに依存しないカラースキーム（ダークモード）切替プラグイン。すべてがルール：セレクタ×色の組み合わせに、例外指定・メモ・ユーザープリセットを備えます。"
+
+msgid "Add row"
+msgstr "行を追加"
+
+msgid "Appears on the button that switches to dark mode."
+msgstr "ダークモードに切り替えるボタンに表示されます。"
+
+msgid "Appears on the button that switches to light mode."
+msgstr "ライトモードに切り替えるボタンに表示されます。"
+
+msgid "Apply"
+msgstr "適用"
+
+msgid "Auto (emoji)"
+msgstr "自動切替（絵文字）"
+
+msgid "Auto (follow the OS setting)"
+msgstr "自動（OSの設定に従う）"
+
+msgid "Auto (symbols)"
+msgstr "自動切替（記号）"
+
+msgid "Background"
+msgstr "背景色"
+
+msgid "Border color"
+msgstr "枠線色"
+
+msgid "Bottom left (floating)"
+msgstr "左下（フローティング）"
+
+msgid "Bottom right (floating)"
+msgstr "右下（フローティング）"
+
+msgid "Button"
+msgstr "ボタン"
+
+msgid "Button background"
+msgstr "ボタンの背景色"
+
+msgid "Button icon color"
+msgstr "ボタンのアイコン色"
+
+msgid "Color scheme toggle"
+msgstr "カラースキーム切替"
+
+msgid "Core"
+msgstr "コア"
+
+msgid "Custom"
+msgstr "カスタム"
+
+msgid "Custom icon"
+msgstr "カスタムアイコン"
+
+msgid "Dark"
+msgstr "ダーク"
+
+msgid "Default: %s"
+msgstr "初期値: %s"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Delete this preset?"
+msgstr "このプリセットを削除しますか？"
+
+msgid "Dim images slightly"
+msgstr "画像を少し暗くする"
+
+msgid "Do not show (only where [color_switch] is placed)"
+msgstr "表示しない（[color_switch] 配置時のみ）"
+
+msgid "Downloads all saved presets as one JSON file."
+msgstr "保存済みプリセットを1つのJSONファイルでダウンロードします。"
+
+msgid "Each rule applies background, text and border colors to its selector while the dark scheme is active, with priority over the theme. An empty color field is not applied. Selectors can be comma-separated. Rules marked \"Core\" (background, text, link, link hover) cannot be deleted."
+msgstr "各ルールは、ダーク配色の有効時にセレクタへ背景色・文字色・枠線色をテーマより優先して適用します。色欄が空の項目は適用されません。セレクタはカンマ区切りで複数指定できます。「コア」と付いたルール（背景色・文字色・リンク・リンクホバー）は削除できません。"
+
+msgid "Exceptions"
+msgstr "例外指定"
+
+msgid "Export / Import"
+msgstr "エクスポート / インポート"
+
+msgid "Export presets (JSON)"
+msgstr "プリセットをエクスポート（JSON）"
+
+msgid "Fixed (emoji)"
+msgstr "固定（絵文字）"
+
+msgid "Icon"
+msgstr "アイコン"
+
+msgid "Images"
+msgstr "画像"
+
+msgid "Import cancelled: it would exceed the preset limit. Please delete some presets first."
+msgstr "保存件数の上限を超えるため、インポートを取り消しました。先にプリセットを削除してください。"
+
+msgid "Import failed: the file format was not recognized."
+msgstr "インポートに失敗しました。ファイル形式を認識できませんでした。"
+
+msgid "Import presets"
+msgstr "プリセットをインポート"
+
+msgid "Imported presets are added to the list above. Apply one to change the current rules. If the import would exceed the preset limit, nothing is imported."
+msgstr "インポートしたプリセットは上の一覧に追加されます。適用すると現在のルールに反映されます。保存件数の上限を超える場合は何もインポートされません。"
+
+msgid "Initial mode"
+msgstr "初期モード"
+
+msgid "Light"
+msgstr "ライト"
+
+msgid "Memo"
+msgstr "メモ"
+
+msgid "No presets yet."
+msgstr "プリセットはまだありません。"
+
+msgid "On"
+msgstr "有効"
+
+msgid "Once a visitor switches the scheme, their choice is stored in the browser and takes precedence."
+msgstr "訪問者が一度切り替えた後は、その選択がブラウザに保存されて優先されます。"
+
+msgid "One selector per line. Links under these elements, and pre / code rules targeting them, keep their original colors (for SNS buttons, product links, or code blocks with their own theme). You can add a memo after \"//\", e.g. \"code //Code block\". Lines starting with // are comments."
+msgstr "1行に1セレクタ。ここに書いた要素配下のリンクと、それらを対象とする pre / code ルールは元の色のままになります（SNSボタンや商品リンク、独自テーマを持つコードブロックなど）。「//」の後にメモを書けます（例: code //コードブロック）。// で始まる行はコメントです。"
+
+msgid "Position"
+msgstr "表示位置"
+
+msgid "Preset applied. The rules and exceptions were replaced."
+msgstr "プリセットを適用しました。ルールと例外指定が置き換わりました。"
+
+msgid "Preset deleted."
+msgstr "プリセットを削除しました。"
+
+msgid "Preset saved."
+msgstr "プリセットを保存しました。"
+
+msgid "Preset title"
+msgstr "プリセット名"
+
+msgid "Presets"
+msgstr "プリセット"
+
+msgid "Presets imported."
+msgstr "プリセットをインポートしました。"
+
+msgid "Rules"
+msgstr "ルール"
+
+msgid "Save preset"
+msgstr "プリセットを保存"
+
+msgid "Save the current rules as a preset"
+msgstr "現在のルールをプリセットとして保存"
+
+msgid "Saved on"
+msgstr "保存日"
+
+msgid "Saved presets"
+msgstr "保存済みプリセット"
+
+msgid "Selector"
+msgstr "セレクタ"
+
+msgid "Settings"
+msgstr "設定"
+
+msgid "Shown in dark mode"
+msgstr "ダーク時に表示"
+
+msgid "Shown in light mode"
+msgstr "ライト時に表示"
+
+msgid "Text"
+msgstr "テキスト"
+
+msgid "Text color"
+msgstr "文字色"
+
+msgid "The preset limit has been reached. Please delete a preset first."
+msgstr "保存件数の上限に達しています。先にどれかプリセットを削除してください。"
+
+msgid "The preset was not found."
+msgstr "プリセットが見つかりませんでした。"
+
+msgid "Title"
+msgstr "タイトル"
+
+msgid "Top left (floating)"
+msgstr "左上（フローティング）"
+
+msgid "Top right (floating)"
+msgstr "右上（フローティング）"
+
+msgid "Untitled preset"
+msgstr "無題のプリセット"
+
+msgid "Used only when the icon type is \"Custom\"."
+msgstr "アイコン種別が「カスタム」のときだけ使われます。"
+
+msgid "You can save up to %d presets. (%d / %d)"
+msgstr "プリセットは最大 %d 件まで保存できます。（%d / %d）"

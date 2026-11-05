@@ -1,59 +1,40 @@
 <?php
 /**
  * Plugin Name: ColorSwitch
- * Description: テーマに依存しないカラースキーム（ダークモード）切替プラグイン。基本カラー＋カスタムルール（セレクタ×色）で、どのテーマにもダーク配色を適用できます。
- * Version: 1.0.0
+ * Description: A theme-independent color scheme (dark mode) toggle plugin. Everything is a rule: selector × colors, with exceptions, memos and user presets.
+ * Version: 1.1.0
  * Author: iiiiorz
  * License: GPL-2.0-or-later
  * Text Domain: color-switch
+ * Domain Path: /languages
  *
- * 設計メモ:
- * - 切替は <html> への 'dark-mode' クラス付け外し。FOUC 防止スクリプトを wp_head 優先度1、
- *   CSS 本体を優先度999 で出力する (テーマ CSS より後に勝つための実績方式)。
- * - 設定は単一オプション csw_settings。タブごとに部分フォームを送るため、
- *   サニタイズは「現在の保存値に、送信されたキーだけを上書き」する方式。
- * - カスタムアイコンは base64 化して保存する。絵文字 (4バイト文字) を含む値は
- *   utf8mb3 の wp_options では保存自体が黙って失敗するため、その DB でも壊れないように。
+ * Design notes:
+ * - Switching toggles the 'dark-mode' class on <html>. The FOUC guard script is
+ *   printed at wp_head priority 1 and the CSS at priority 999 (a proven way to
+ *   win over theme stylesheets).
+ * - Settings live in a single option, csw_settings. Each settings tab posts a
+ *   partial form, so the sanitizer merges submitted keys into the saved values.
+ * - Free-text values (custom icons, rule memos, preset titles) are stored
+ *   base64-encoded so that 4-byte characters (emoji) cannot silently fail to
+ *   save on utf8mb3 databases.
+ * - v1.1: base colors were folded into the rule list. Four core rules
+ *   (background / text / link / link hover) always exist and cannot be deleted.
  */
 
 if (!defined('ABSPATH')) exit;
 
 define('CSW_OPTION', 'csw_settings');
+define('CSW_PRESETS_OPTION', 'csw_presets');
+define('CSW_PRESET_MAX', 10);
 
-/* ---------------- 既定値 ---------------- */
+add_action('init', function () {
+    load_plugin_textdomain('color-switch', false, dirname(plugin_basename(__FILE__)) . '/languages');
+});
 
-function csw_defaults() {
-    return array(
-        // 基本カラー (汎用プリセット)
-        'dark_bg'         => '#242424',
-        'dark_surface'    => '#303030',
-        'dark_text'       => '#ffffff',
-        'dark_link'       => '#6cb2f5',
-        'dark_link_hover' => '#a8cfff',
-        'dark_accent'     => '#f5c542',
-        'img_dim'         => 1, // 画像を少し暗くする
-        // カスタムルール: array of {selector, bg, color, border, enabled}
-        'rules'           => array(),
-        // 色を変えないセレクタ (1行に1つ)。リンク色と pre/code の対象から外れる
-        'exclude_selectors' => '',
-        // ボタン
-        'button_bg'       => '#393939',
-        'button_color'    => '#ffffff',
-        'icon_preset'     => 'emoji_auto', // emoji_auto|emoji_moon|unicode|text|custom
-        'icon_custom_light' => '🌙',
-        'icon_custom_dark'  => '☀️',
-        'position'        => 'bottom_right', // bottom_right|bottom_left|top_right|top_left|shortcode
-        'default_mode'    => 'auto',         // auto|light|dark
-    );
-}
+/* ---------------- Text encoding (utf8mb3-safe) ---------------- */
 
-function csw_base_color_keys() {
-    return array('dark_bg', 'dark_surface', 'dark_text', 'dark_link', 'dark_link_hover', 'dark_accent', 'button_bg', 'button_color');
-}
-
-/* 絵文字など4バイト文字を DB 文字コードに依存せず保存するための符号化 */
-function csw_icon_encode($v) { return 'b64:' . base64_encode($v); }
-function csw_icon_decode($v) {
+function csw_txt_encode($v) { return 'b64:' . base64_encode((string) $v); }
+function csw_txt_decode($v) {
     $guard = 0;
     while (is_string($v) && strpos($v, 'b64:') === 0 && $guard < 3) {
         $d = base64_decode(substr($v, 4), true);
@@ -64,19 +45,150 @@ function csw_icon_decode($v) {
     return $v;
 }
 
+/* ---------------- Rules: core + starters ---------------- */
+
+/* Core rules always exist and cannot be deleted. Memo text is data, not UI. */
+function csw_core_rules() {
+    return array(
+        array('core' => 'bg', 'selector' => 'body',
+              'bg' => '#242424', 'color' => '', 'border' => '', 'enabled' => 1, 'memo' => '背景色'),
+        array('core' => 'text', 'selector' => 'body, h1, h2, h3, h4, h5, h6, p, li, dt, dd, label, figcaption, td, th',
+              'bg' => '', 'color' => '#ffffff', 'border' => '', 'enabled' => 1, 'memo' => '文字色'),
+        array('core' => 'link', 'selector' => 'a',
+              'bg' => '', 'color' => '#6cb2f5', 'border' => '', 'enabled' => 1, 'memo' => 'リンク'),
+        array('core' => 'link_hover', 'selector' => 'a:hover',
+              'bg' => '', 'color' => '#a8cfff', 'border' => '', 'enabled' => 1, 'memo' => 'リンクホバー'),
+    );
+}
+
+/* Deletable starter rules that reproduce the old generic base look. */
+function csw_starter_rules() {
+    return array(
+        array('core' => '', 'selector' => 'header, footer, aside',
+              'bg' => '#303030', 'color' => '#ffffff', 'border' => '', 'enabled' => 1, 'memo' => '面（ヘッダー・フッター・サイドバー）'),
+        array('core' => '', 'selector' => 'header a, footer a, aside a',
+              'bg' => '', 'color' => '#ffffff', 'border' => '', 'enabled' => 1, 'memo' => '面の中のリンク'),
+        array('core' => '', 'selector' => 'table',
+              'bg' => 'transparent', 'color' => '#ffffff', 'border' => '#555555', 'enabled' => 1, 'memo' => '表'),
+        array('core' => '', 'selector' => 'th',
+              'bg' => '#303030', 'color' => '#ffffff', 'border' => '#555555', 'enabled' => 1, 'memo' => '表の見出しセル'),
+        array('core' => '', 'selector' => 'td',
+              'bg' => 'transparent', 'color' => '#ffffff', 'border' => '#555555', 'enabled' => 1, 'memo' => '表のセル'),
+        array('core' => '', 'selector' => 'input, textarea, select',
+              'bg' => '#303030', 'color' => '#ffffff', 'border' => '#555555', 'enabled' => 1, 'memo' => '入力欄'),
+        array('core' => '', 'selector' => 'pre, code',
+              'bg' => '#303030', 'color' => '#ffffff', 'border' => '#555555', 'enabled' => 1, 'memo' => 'コード'),
+        array('core' => '', 'selector' => '::selection',
+              'bg' => '#f5c542', 'color' => '#393939', 'border' => '', 'enabled' => 1, 'memo' => '選択範囲'),
+    );
+}
+
+function csw_default_excludes() {
+    return "pre //コードブロック\ncode //コードブロック";
+}
+
+function csw_defaults() {
+    return array(
+        'ver' => 2,
+        'rules' => array_merge(csw_core_rules(), csw_starter_rules()),
+        // Exceptions, one per line. "// comment" after a selector is a memo.
+        'exclude_selectors' => csw_default_excludes(),
+        'img_dim' => 1, // Dim images slightly
+        // Button
+        'button_bg' => '#393939',
+        'button_color' => '#ffffff',
+        'icon_preset' => 'emoji_auto', // emoji_auto|emoji_moon|unicode|text|custom
+        'icon_custom_light' => '🌙',
+        'icon_custom_dark' => '☀️',
+        'position' => 'bottom_right', // bottom_right|bottom_left|top_right|top_left|shortcode
+        'default_mode' => 'auto',     // auto|light|dark
+    );
+}
+
+/* ---------------- Settings access ---------------- */
+
+function csw_rules_decode($rules) {
+    if (!is_array($rules)) return array();
+    foreach ($rules as &$r) {
+        if (isset($r['memo'])) $r['memo'] = csw_txt_decode($r['memo']);
+    }
+    unset($r);
+    return $rules;
+}
+
+function csw_rules_encode($rules) {
+    if (!is_array($rules)) return array();
+    foreach ($rules as &$r) {
+        if (isset($r['memo'])) $r['memo'] = csw_txt_encode(csw_txt_decode($r['memo']));
+    }
+    unset($r);
+    return $rules;
+}
+
+/* Convert a v1.0 settings array (base colors) into the v1.1 rule structure. */
+function csw_upgrade_v1($saved) {
+    $out = csw_defaults();
+    $core = csw_core_rules();
+    $core[0]['bg'] = !empty($saved['dark_bg']) ? $saved['dark_bg'] : $core[0]['bg'];
+    $core[1]['color'] = !empty($saved['dark_text']) ? $saved['dark_text'] : $core[1]['color'];
+    $core[2]['color'] = !empty($saved['dark_link']) ? $saved['dark_link'] : $core[2]['color'];
+    $core[3]['color'] = !empty($saved['dark_link_hover']) ? $saved['dark_link_hover'] : $core[3]['color'];
+    $rules = $core;
+    if (!empty($saved['rules']) && is_array($saved['rules'])) {
+        foreach ($saved['rules'] as $r) {
+            if (!is_array($r)) continue;
+            $rules[] = array(
+                'core' => '',
+                'selector' => isset($r['selector']) ? $r['selector'] : '',
+                'bg' => isset($r['bg']) ? $r['bg'] : '',
+                'color' => isset($r['color']) ? $r['color'] : '',
+                'border' => isset($r['border']) ? $r['border'] : '',
+                'enabled' => !empty($r['enabled']) ? 1 : 0,
+                'memo' => '',
+            );
+        }
+    } else {
+        $rules = array_merge($rules, csw_starter_rules());
+    }
+    $out['rules'] = $rules;
+    if (isset($saved['exclude_selectors'])) $out['exclude_selectors'] = (string) $saved['exclude_selectors'];
+    if (isset($saved['img_dim'])) $out['img_dim'] = !empty($saved['img_dim']) ? 1 : 0;
+    foreach (array('button_bg', 'button_color', 'icon_preset', 'position', 'default_mode') as $k) {
+        if (isset($saved[$k])) $out[$k] = $saved[$k];
+    }
+    foreach (array('icon_custom_light', 'icon_custom_dark') as $k) {
+        if (isset($saved[$k])) $out[$k] = csw_txt_decode($saved[$k]);
+    }
+    $out['ver'] = 2;
+    return $out;
+}
+
 function csw_settings() {
     $saved = get_option(CSW_OPTION, array());
     if (!is_array($saved)) $saved = array();
+    if (isset($saved['dark_bg']) && !isset($saved['ver'])) {
+        $s = csw_upgrade_v1($saved); // already in decoded form
+        return $s;
+    }
     $s = array_merge(csw_defaults(), $saved);
-    $s['icon_custom_light'] = csw_icon_decode($s['icon_custom_light']);
-    $s['icon_custom_dark']  = csw_icon_decode($s['icon_custom_dark']);
-    if (!is_array($s['rules'])) $s['rules'] = array();
+    $s['icon_custom_light'] = csw_txt_decode($s['icon_custom_light']);
+    $s['icon_custom_dark'] = csw_txt_decode($s['icon_custom_dark']);
+    $s['rules'] = csw_rules_decode($s['rules']);
     return $s;
 }
 
-/* ---------------- サニタイズ ---------------- */
+/* Store a decoded settings array (encodes free-text values first). */
+function csw_store_settings($s) {
+    $s['icon_custom_light'] = csw_txt_encode($s['icon_custom_light']);
+    $s['icon_custom_dark'] = csw_txt_encode($s['icon_custom_dark']);
+    $s['rules'] = csw_rules_encode($s['rules']);
+    $s['ver'] = 2;
+    update_option(CSW_OPTION, $s);
+}
 
-/* CSS の色として許可する値: #hex / transparent / var(--name) のみ */
+/* ---------------- Sanitizing ---------------- */
+
+/* Allowed CSS color values: #hex / transparent / var(--name) only */
 function csw_css_color($v) {
     $v = trim((string) $v);
     if ($v === '') return '';
@@ -87,7 +199,7 @@ function csw_css_color($v) {
     return '';
 }
 
-/* セレクタとして許可する文字列: style 脱出や宣言混入に使える文字を除去 */
+/* Allowed selector text: strip characters usable for style escape / injection */
 function csw_sanitize_selector($sel) {
     $sel = wp_strip_all_tags((string) $sel);
     $sel = str_replace(array('{', '}', '<', '>', ';', '@'), '', $sel);
@@ -95,14 +207,70 @@ function csw_sanitize_selector($sel) {
     return $sel;
 }
 
+/*
+ * Parse the exceptions text into a selector list.
+ * One selector per line; "// memo" after a selector (or a line starting
+ * with //) is a comment and is not treated as part of the selector.
+ */
 function csw_parse_excludes($text) {
-    $parts = preg_split('/[\r\n,]+/', (string) $text);
     $out = array();
-    foreach ($parts as $p) {
-        $p = csw_sanitize_selector($p);
-        if ($p !== '') $out[] = $p;
+    foreach (preg_split('/\r\n|\r|\n/', (string) $text) as $line) {
+        $line = trim($line);
+        if ($line === '') continue;
+        if (preg_match('/(^|\s)\/\//', $line, $m, PREG_OFFSET_CAPTURE)) {
+            $line = trim(substr($line, 0, $m[0][1]));
+        }
+        if ($line === '') continue;
+        foreach (explode(',', $line) as $p) {
+            $p = csw_sanitize_selector($p);
+            if ($p !== '') $out[] = $p;
+        }
     }
     return array_values(array_unique($out));
+}
+
+/*
+ * Sanitize raw rule rows. Memos are returned encoded.
+ * Missing core rules are restored from $core_source (decoded rules),
+ * so a core rule can never be deleted through a submitted form.
+ */
+function csw_sanitize_rules($raw_rows, $core_source) {
+    $rows = array();
+    $seen_core = array();
+    if (is_array($raw_rows)) {
+        foreach ($raw_rows as $r) {
+            if (!is_array($r)) continue;
+            $core = isset($r['core']) ? sanitize_key($r['core']) : '';
+            if (!in_array($core, array('', 'bg', 'text', 'link', 'link_hover'), true)) $core = '';
+            if ($core !== '') {
+                if (isset($seen_core[$core])) continue; // first one wins
+                $seen_core[$core] = true;
+            }
+            $sel = isset($r['selector']) ? csw_sanitize_selector($r['selector']) : '';
+            $row = array(
+                'core' => $core,
+                'selector' => $sel,
+                'bg' => isset($r['bg']) ? csw_css_color($r['bg']) : '',
+                'color' => isset($r['color']) ? csw_css_color($r['color']) : '',
+                'border' => isset($r['border']) ? csw_css_color($r['border']) : '',
+                'enabled' => !empty($r['enabled']) ? 1 : 0,
+                'memo' => csw_txt_encode(isset($r['memo']) ? sanitize_text_field($r['memo']) : ''),
+            );
+            if ($core === '' && $sel === '' && $row['bg'] === '' && $row['color'] === '' && $row['border'] === '') continue;
+            $rows[] = $row;
+        }
+    }
+    $missing = array();
+    foreach (csw_core_rules() as $cr) {
+        if (!isset($seen_core[$cr['core']])) {
+            foreach ((array) $core_source as $sr) {
+                if (isset($sr['core']) && $sr['core'] === $cr['core']) { $cr = $sr; break; }
+            }
+            $cr['memo'] = csw_txt_encode(isset($cr['memo']) ? $cr['memo'] : '');
+            $missing[] = $cr;
+        }
+    }
+    return array_merge($missing, $rows);
 }
 
 add_action('admin_init', function () {
@@ -113,47 +281,33 @@ function csw_sanitize($input) {
     if (!is_array($input)) $input = array();
     $saved = get_option(CSW_OPTION, array());
     if (!is_array($saved)) $saved = array();
-    $out = array_merge(csw_defaults(), $saved); // 現在値ベース (タブ単位の部分保存に対応)
+    $current = (isset($saved['dark_bg']) && !isset($saved['ver'])) ? array() : $saved;
+    $out = array_merge(csw_defaults(), $current); // merge over saved values (per-tab partial forms)
 
-    foreach (csw_base_color_keys() as $k) {
+    if (isset($input['rules_present'])) {
+        $decoded_current = csw_settings();
+        $out['rules'] = csw_sanitize_rules(isset($input['rules']) ? $input['rules'] : array(), $decoded_current['rules']);
+    }
+    if (isset($input['exclude_selectors'])) {
+        $out['exclude_selectors'] = sanitize_textarea_field($input['exclude_selectors']);
+    }
+    if (isset($input['img_dim_present'])) {
+        $out['img_dim'] = !empty($input['img_dim']) ? 1 : 0;
+    }
+    foreach (array('button_bg', 'button_color') as $k) {
         if (isset($input[$k])) {
             $c = sanitize_hex_color($input[$k]);
             if ($c) $out[$k] = $c;
         }
     }
-    if (isset($input['img_dim_present'])) {
-        $out['img_dim'] = !empty($input['img_dim']) ? 1 : 0;
-    }
-    if (isset($input['rules_present'])) {
-        $rows = array();
-        if (isset($input['rules']) && is_array($input['rules'])) {
-            foreach ($input['rules'] as $r) {
-                if (!is_array($r)) continue;
-                $sel = isset($r['selector']) ? csw_sanitize_selector($r['selector']) : '';
-                $row = array(
-                    'selector' => $sel,
-                    'bg'       => isset($r['bg']) ? csw_css_color($r['bg']) : '',
-                    'color'    => isset($r['color']) ? csw_css_color($r['color']) : '',
-                    'border'   => isset($r['border']) ? csw_css_color($r['border']) : '',
-                    'enabled'  => !empty($r['enabled']) ? 1 : 0,
-                );
-                if ($sel === '' && $row['bg'] === '' && $row['color'] === '' && $row['border'] === '') continue;
-                $rows[] = $row;
-            }
-        }
-        $out['rules'] = $rows;
-    }
-    if (isset($input['exclude_selectors'])) {
-        $out['exclude_selectors'] = implode("\n", csw_parse_excludes($input['exclude_selectors']));
-    }
     if (isset($input['icon_preset']) && in_array($input['icon_preset'], array('emoji_auto', 'emoji_moon', 'unicode', 'text', 'custom'), true)) {
         $out['icon_preset'] = $input['icon_preset'];
     }
     foreach (array('icon_custom_light', 'icon_custom_dark') as $k) {
-        if (isset($input[$k])) $out[$k] = csw_icon_encode(csw_icon_decode(sanitize_text_field($input[$k])));
+        if (isset($input[$k])) $out[$k] = csw_txt_encode(csw_txt_decode(sanitize_text_field($input[$k])));
     }
     foreach (array('icon_custom_light', 'icon_custom_dark') as $k) {
-        if (strpos((string) $out[$k], 'b64:') !== 0) $out[$k] = csw_icon_encode((string) $out[$k]);
+        if (strpos((string) $out[$k], 'b64:') !== 0) $out[$k] = csw_txt_encode((string) $out[$k]);
     }
     if (isset($input['position']) && in_array($input['position'], array('bottom_right', 'bottom_left', 'top_right', 'top_left', 'shortcode'), true)) {
         $out['position'] = $input['position'];
@@ -161,85 +315,227 @@ function csw_sanitize($input) {
     if (isset($input['default_mode']) && in_array($input['default_mode'], array('auto', 'light', 'dark'), true)) {
         $out['default_mode'] = $input['default_mode'];
     }
+    $out['ver'] = 2;
     return $out;
 }
 
-/* ---------------- 設定画面 (タブ分け) ---------------- */
+/* ---------------- User presets ---------------- */
+
+/* Stored form: titles and rule memos are encoded. */
+function csw_presets_raw() {
+    $p = get_option(CSW_PRESETS_OPTION, array());
+    return is_array($p) ? array_values($p) : array();
+}
+
+/* Decoded view used by the admin UI and export. */
+function csw_presets() {
+    $out = array();
+    foreach (csw_presets_raw() as $p) {
+        if (!is_array($p)) continue;
+        $p['title'] = csw_txt_decode(isset($p['title']) ? $p['title'] : '');
+        $p['rules'] = csw_rules_decode(isset($p['rules']) ? $p['rules'] : array());
+        $out[] = $p;
+    }
+    return $out;
+}
+
+function csw_presets_save($list) {
+    update_option(CSW_PRESETS_OPTION, array_values($list));
+}
+
+/* Save the current rules + exceptions as a new preset. Returns true or 'cap'. */
+function csw_preset_save_current($title) {
+    $list = csw_presets_raw();
+    if (count($list) >= CSW_PRESET_MAX) return 'cap';
+    $s = csw_settings();
+    $list[] = array(
+        'id' => uniqid('p', true),
+        'title' => csw_txt_encode($title),
+        'rules' => csw_rules_encode($s['rules']),
+        'exclude_selectors' => $s['exclude_selectors'],
+        'created' => time(),
+    );
+    csw_presets_save($list);
+    return true;
+}
+
+function csw_preset_find($list, $id) {
+    foreach ($list as $i => $p) {
+        if (isset($p['id']) && $p['id'] === $id) return $i;
+    }
+    return -1;
+}
+
+/* Apply a preset to the current settings (rules + exceptions only). */
+function csw_preset_apply($id) {
+    $list = csw_presets_raw();
+    $i = csw_preset_find($list, $id);
+    if ($i < 0) return false;
+    $s = csw_settings();
+    $s['rules'] = csw_rules_decode($list[$i]['rules']);
+    $s['exclude_selectors'] = isset($list[$i]['exclude_selectors']) ? $list[$i]['exclude_selectors'] : '';
+    csw_store_settings($s);
+    return true;
+}
+
+function csw_preset_delete($id) {
+    $list = csw_presets_raw();
+    $i = csw_preset_find($list, $id);
+    if ($i < 0) return false;
+    array_splice($list, $i, 1);
+    csw_presets_save($list);
+    return true;
+}
+
+function csw_presets_export_data() {
+    $presets = array();
+    foreach (csw_presets() as $p) {
+        $presets[] = array(
+            'title' => $p['title'],
+            'rules' => $p['rules'],
+            'exclude_selectors' => isset($p['exclude_selectors']) ? $p['exclude_selectors'] : '',
+        );
+    }
+    return array(
+        'app' => 'ColorSwitch',
+        'kind' => 'colorswitch-presets',
+        'version' => 1,
+        'presets' => $presets,
+    );
+}
+
+/*
+ * Validate and sanitize imported preset data.
+ * Returns a list of raw (encoded) presets, or a string error code:
+ * 'format' (unrecognized data) / 'cap' (would exceed the preset limit).
+ */
+function csw_presets_import_data($data) {
+    if (!is_array($data)) return 'format';
+    if (isset($data['presets']) && is_array($data['presets'])) {
+        $items = $data['presets'];
+    } elseif (isset($data['rules'])) {
+        $items = array($data); // a single preset object
+    } elseif (array_values($data) === $data) {
+        $items = $data; // a bare list of presets
+    } else {
+        return 'format';
+    }
+    $existing = csw_presets_raw();
+    if (count($existing) + count($items) > CSW_PRESET_MAX) return 'cap';
+    $out = array();
+    foreach ($items as $it) {
+        if (!is_array($it) || !isset($it['rules']) || !is_array($it['rules'])) return 'format';
+        $title = isset($it['title']) ? sanitize_text_field($it['title']) : '';
+        if ($title === '') $title = 'Imported preset';
+        $decoded_rules = array();
+        foreach ($it['rules'] as $r) {
+            if (!is_array($r)) continue;
+            $r['memo'] = isset($r['memo']) ? (string) $r['memo'] : '';
+            $decoded_rules[] = $r;
+        }
+        $out[] = array(
+            'id' => uniqid('p', true),
+            'title' => csw_txt_encode($title),
+            'rules' => csw_sanitize_rules($decoded_rules, csw_core_rules()),
+            'exclude_selectors' => isset($it['exclude_selectors']) ? sanitize_textarea_field($it['exclude_selectors']) : '',
+            'created' => time(),
+        );
+    }
+    return $out;
+}
+
+/* ---------------- Admin UI ---------------- */
 
 add_action('admin_menu', function () {
     add_options_page('ColorSwitch', 'ColorSwitch', 'manage_options', 'color-switch', 'csw_settings_page');
 });
 
-function csw_color_field($name, $value, $default) {
-    $picker = $value !== '' ? $value : '#303030';
+function csw_admin_styles() {
     ?>
-    <input type="color" value="<?php echo esc_attr($picker); ?>" onchange="this.nextElementSibling.value=this.value">
-    <input type="text" name="<?php echo esc_attr($name); ?>" value="<?php echo esc_attr($value); ?>" class="regular-text" style="width:110px" oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value))this.previousElementSibling.value=this.value">
-    <span class="description"><?php echo esc_html(sprintf(__('初期値: %s', 'color-switch'), $default)); ?></span>
+    <style>
+    .csw-del { color: #b32d2e !important; border-color: #b32d2e !important; }
+    .csw-del:hover, .csw-del:focus { background: #b32d2e !important; color: #fff !important; border-color: #b32d2e !important; }
+    input[type="color"].csw-empty { opacity: .35; filter: grayscale(100%); outline: 1px dashed #888; outline-offset: 1px; }
+    .csw-core-badge { display: inline-block; padding: 2px 8px; border: 1px solid #2271b1; color: #2271b1; border-radius: 9999px; font-size: 11px; }
+    #csw-custom-box { border: 1px solid #c3c4c7; border-radius: 4px; padding: 12px 16px; max-width: 560px; background: #fff; }
+    #csw-custom-box p { margin: 8px 0; }
+    </style>
+    <?php
+}
+
+/* Bind color picker <-> text input pairs, and mark pickers whose value is empty. */
+function csw_admin_color_script() {
+    ?>
+    <script>
+    window.cswBindColors = function (root) {
+        (root || document).querySelectorAll('.csw-color').forEach(function (w) {
+            if (w.dataset.bound) return;
+            w.dataset.bound = '1';
+            var p = w.querySelector('input[type="color"]');
+            var t = w.querySelector('input[type="text"]');
+            if (!p || !t) return;
+            function sync() {
+                var empty = t.value.trim() === '';
+                p.classList.toggle('csw-empty', empty);
+                if (!empty && /^#[0-9a-fA-F]{6}$/.test(t.value)) p.value = t.value;
+            }
+            p.addEventListener('input', function () { t.value = p.value; sync(); });
+            t.addEventListener('input', sync);
+            sync();
+        });
+    };
+    document.addEventListener('DOMContentLoaded', function () { window.cswBindColors(document); });
+    </script>
+    <?php
+}
+
+function csw_color_field($name, $value, $default) {
+    $picker = ($value !== '' && $value[0] === '#') ? $value : '#303030';
+    ?>
+    <span class="csw-color"><input type="color" value="<?php echo esc_attr($picker); ?>"> <input type="text" name="<?php echo esc_attr($name); ?>" value="<?php echo esc_attr($value); ?>" class="regular-text" style="width:110px"></span>
+    <span class="description"><?php echo esc_html(sprintf(__('Default: %s', 'color-switch'), $default)); ?></span>
+    <?php
+}
+
+function csw_rule_color($name, $value) {
+    $picker = ($value !== '' && $value[0] === '#') ? $value : '#303030';
+    ?>
+    <span class="csw-color"><input type="color" value="<?php echo esc_attr($picker); ?>"> <input type="text" name="<?php echo esc_attr($name); ?>" value="<?php echo esc_attr($value); ?>" style="width:90px" placeholder="#rrggbb"></span>
     <?php
 }
 
 function csw_settings_page() {
     if (!current_user_can('manage_options')) return;
     $s = csw_settings();
-    $tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : 'base';
-    if (!in_array($tab, array('base', 'rules', 'button', 'preset'), true)) $tab = 'base';
+    $tab = isset($_GET['tab']) ? sanitize_key($_GET['tab']) : 'rules';
+    if (!in_array($tab, array('rules', 'button', 'preset'), true)) $tab = 'rules';
     $base_url = admin_url('options-general.php?page=color-switch');
+    csw_admin_styles();
     ?>
     <div class="wrap">
-        <h1>ColorSwitch <?php echo esc_html(__('設定', 'color-switch')); ?></h1>
+        <h1>ColorSwitch <?php echo esc_html(__('Settings', 'color-switch')); ?></h1>
         <nav class="nav-tab-wrapper">
-            <a href="<?php echo esc_url($base_url . '&tab=base'); ?>" class="nav-tab <?php echo $tab === 'base' ? 'nav-tab-active' : ''; ?>"><?php echo esc_html(__('基本カラー', 'color-switch')); ?></a>
-            <a href="<?php echo esc_url($base_url . '&tab=rules'); ?>" class="nav-tab <?php echo $tab === 'rules' ? 'nav-tab-active' : ''; ?>"><?php echo esc_html(__('カスタムルール', 'color-switch')); ?></a>
-            <a href="<?php echo esc_url($base_url . '&tab=button'); ?>" class="nav-tab <?php echo $tab === 'button' ? 'nav-tab-active' : ''; ?>"><?php echo esc_html(__('ボタン', 'color-switch')); ?></a>
-            <a href="<?php echo esc_url($base_url . '&tab=preset'); ?>" class="nav-tab <?php echo $tab === 'preset' ? 'nav-tab-active' : ''; ?>"><?php echo esc_html(__('プリセット', 'color-switch')); ?></a>
+            <a href="<?php echo esc_url($base_url . '&tab=rules'); ?>" class="nav-tab <?php echo $tab === 'rules' ? 'nav-tab-active' : ''; ?>"><?php echo esc_html(__('Rules', 'color-switch')); ?></a>
+            <a href="<?php echo esc_url($base_url . '&tab=button'); ?>" class="nav-tab <?php echo $tab === 'button' ? 'nav-tab-active' : ''; ?>"><?php echo esc_html(__('Button', 'color-switch')); ?></a>
+            <a href="<?php echo esc_url($base_url . '&tab=preset'); ?>" class="nav-tab <?php echo $tab === 'preset' ? 'nav-tab-active' : ''; ?>"><?php echo esc_html(__('Presets', 'color-switch')); ?></a>
         </nav>
 
-        <?php if ($tab === 'base'): ?>
-        <form method="post" action="options.php">
-            <?php settings_fields('csw_settings_group'); ?>
-            <table class="form-table">
-                <?php
-                $labels = array(
-                    'dark_bg' => __('ダーク時: 背景色', 'color-switch'),
-                    'dark_surface' => __('ダーク時: 面の色 (ヘッダー/フッター/カード等)', 'color-switch'),
-                    'dark_text' => __('ダーク時: 文字色', 'color-switch'),
-                    'dark_link' => __('ダーク時: リンク色', 'color-switch'),
-                    'dark_link_hover' => __('ダーク時: リンクホバー色', 'color-switch'),
-                    'dark_accent' => __('ダーク時: アクセント色 (選択色など)', 'color-switch'),
-                );
-                foreach ($labels as $k => $label): ?>
-                <tr>
-                    <th scope="row"><?php echo esc_html($label); ?></th>
-                    <td><?php csw_color_field(CSW_OPTION . '[' . $k . ']', $s[$k], csw_defaults()[$k]); ?></td>
-                </tr>
-                <?php endforeach; ?>
-                <tr>
-                    <th scope="row"><?php echo esc_html(__('画像', 'color-switch')); ?></th>
-                    <td>
-                        <input type="hidden" name="<?php echo CSW_OPTION; ?>[img_dim_present]" value="1">
-                        <label><input type="checkbox" name="<?php echo CSW_OPTION; ?>[img_dim]" value="1" <?php checked($s['img_dim'], 1); ?>> <?php echo esc_html(__('ダーク時に画像を少し暗くする', 'color-switch')); ?></label>
-                    </td>
-                </tr>
-            </table>
-            <?php submit_button(); ?>
-        </form>
-
-        <?php elseif ($tab === 'rules'): ?>
+        <?php if ($tab === 'rules'): ?>
         <form method="post" action="options.php">
             <?php settings_fields('csw_settings_group'); ?>
             <input type="hidden" name="<?php echo CSW_OPTION; ?>[rules_present]" value="1">
-            <h2><?php echo esc_html(__('カスタムルール', 'color-switch')); ?></h2>
-            <p class="description"><?php echo esc_html(__('セレクタごとに背景色・文字色・枠線色を指定できます。色欄が空の項目は適用されません。セレクタはカンマ区切りで複数指定できます。ダーク時のみ、テーマのスタイルより優先して適用されます。', 'color-switch')); ?></p>
+            <h2><?php echo esc_html(__('Rules', 'color-switch')); ?></h2>
+            <p class="description"><?php echo esc_html(__('Each rule applies background, text and border colors to its selector while the dark scheme is active, with priority over the theme. An empty color field is not applied. Selectors can be comma-separated. Rules marked "Core" (background, text, link, link hover) cannot be deleted.', 'color-switch')); ?></p>
             <table class="widefat striped" id="csw-rules-table">
                 <thead>
                     <tr>
-                        <th style="width:50px"><?php echo esc_html(__('有効', 'color-switch')); ?></th>
-                        <th><?php echo esc_html(__('セレクタ', 'color-switch')); ?></th>
-                        <th style="width:190px"><?php echo esc_html(__('背景色', 'color-switch')); ?></th>
-                        <th style="width:190px"><?php echo esc_html(__('文字色', 'color-switch')); ?></th>
-                        <th style="width:190px"><?php echo esc_html(__('枠線色', 'color-switch')); ?></th>
-                        <th style="width:70px"></th>
+                        <th style="width:46px"><?php echo esc_html(__('On', 'color-switch')); ?></th>
+                        <th><?php echo esc_html(__('Selector', 'color-switch')); ?></th>
+                        <th style="width:180px"><?php echo esc_html(__('Background', 'color-switch')); ?></th>
+                        <th style="width:180px"><?php echo esc_html(__('Text color', 'color-switch')); ?></th>
+                        <th style="width:180px"><?php echo esc_html(__('Border color', 'color-switch')); ?></th>
+                        <th style="width:180px"><?php echo esc_html(__('Memo', 'color-switch')); ?></th>
+                        <th style="width:76px"></th>
                     </tr>
                 </thead>
                 <tbody id="csw-rules-body">
@@ -250,18 +546,33 @@ function csw_settings_page() {
                         <td><?php csw_rule_color(CSW_OPTION . '[rules][' . $i . '][bg]', $r['bg']); ?></td>
                         <td><?php csw_rule_color(CSW_OPTION . '[rules][' . $i . '][color]', $r['color']); ?></td>
                         <td><?php csw_rule_color(CSW_OPTION . '[rules][' . $i . '][border]', $r['border']); ?></td>
-                        <td><button type="button" class="button csw-rule-del"><?php echo esc_html(__('削除', 'color-switch')); ?></button></td>
+                        <td><input type="text" name="<?php echo CSW_OPTION; ?>[rules][<?php echo $i; ?>][memo]" value="<?php echo esc_attr(isset($r['memo']) ? $r['memo'] : ''); ?>" class="large-text" placeholder="<?php echo esc_attr(__('Memo', 'color-switch')); ?>"></td>
+                        <td>
+                            <?php if (!empty($r['core'])): ?>
+                            <input type="hidden" name="<?php echo CSW_OPTION; ?>[rules][<?php echo $i; ?>][core]" value="<?php echo esc_attr($r['core']); ?>">
+                            <span class="csw-core-badge"><?php echo esc_html(__('Core', 'color-switch')); ?></span>
+                            <?php else: ?>
+                            <button type="button" class="button csw-rule-del csw-del"><?php echo esc_html(__('Delete', 'color-switch')); ?></button>
+                            <?php endif; ?>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
-            <p><button type="button" class="button" id="csw-rule-add"><?php echo esc_html(__('行を追加', 'color-switch')); ?></button></p>
+            <p><button type="button" class="button" id="csw-rule-add"><?php echo esc_html(__('Add row', 'color-switch')); ?></button></p>
 
-            <h2><?php echo esc_html(__('色を変えないセレクタ', 'color-switch')); ?></h2>
-            <p class="description"><?php echo esc_html(__('1行に1つ。ここに書いた要素配下のリンクと pre / code は、基本カラーの対象から外れます（SNS ボタンや独自テーマを持つコードブロックなどに）。', 'color-switch')); ?></p>
+            <h2><?php echo esc_html(__('Exceptions', 'color-switch')); ?></h2>
+            <p class="description"><?php echo esc_html(__('One selector per line. Links under these elements, and pre / code rules targeting them, keep their original colors (for SNS buttons, product links, or code blocks with their own theme). You can add a memo after "//", e.g. "code //Code block". Lines starting with // are comments.', 'color-switch')); ?></p>
             <textarea name="<?php echo CSW_OPTION; ?>[exclude_selectors]" rows="5" class="large-text code" placeholder=".sns-share-buttons"><?php echo esc_textarea($s['exclude_selectors']); ?></textarea>
+
+            <h2><?php echo esc_html(__('Images', 'color-switch')); ?></h2>
+            <p>
+                <input type="hidden" name="<?php echo CSW_OPTION; ?>[img_dim_present]" value="1">
+                <label><input type="checkbox" name="<?php echo CSW_OPTION; ?>[img_dim]" value="1" <?php checked($s['img_dim'], 1); ?>> <?php echo esc_html(__('Dim images slightly', 'color-switch')); ?></label>
+            </p>
             <?php submit_button(); ?>
         </form>
+        <?php csw_admin_color_script(); ?>
         <script>
         (function () {
             var body = document.getElementById('csw-rules-body');
@@ -275,15 +586,17 @@ function csw_settings_page() {
                 tr.className = 'csw-rule-row';
                 var name = '<?php echo CSW_OPTION; ?>[rules][' + i + ']';
                 function colorCell(field) {
-                    return '<td><input type="color" value="#303030" onchange="this.nextElementSibling.value=this.value"> ' +
-                        '<input type="text" name="' + name + '[' + field + ']" value="" style="width:90px"></td>';
+                    return '<td><span class="csw-color"><input type="color" value="#303030"> ' +
+                        '<input type="text" name="' + name + '[' + field + ']" value="" style="width:90px" placeholder="#rrggbb"></span></td>';
                 }
                 tr.innerHTML = '<td><input type="checkbox" name="' + name + '[enabled]" value="1" checked></td>' +
                     '<td><input type="text" name="' + name + '[selector]" value="" class="large-text" placeholder=".site-header, #header"></td>' +
                     colorCell('bg') + colorCell('color') + colorCell('border') +
-                    '<td><button type="button" class="button csw-rule-del"><?php echo esc_js(__('削除', 'color-switch')); ?></button></td>';
+                    '<td><input type="text" name="' + name + '[memo]" value="" class="large-text" placeholder="<?php echo esc_js(__('Memo', 'color-switch')); ?>"></td>' +
+                    '<td><button type="button" class="button csw-rule-del csw-del"><?php echo esc_js(__('Delete', 'color-switch')); ?></button></td>';
                 body.appendChild(tr);
                 bindDel(tr.querySelector('.csw-rule-del'));
+                window.cswBindColors(tr);
             });
         })();
         </script>
@@ -293,180 +606,227 @@ function csw_settings_page() {
             <?php settings_fields('csw_settings_group'); ?>
             <table class="form-table">
                 <tr>
-                    <th scope="row"><?php echo esc_html(__('アイコン', 'color-switch')); ?></th>
+                    <th scope="row"><?php echo esc_html(__('Icon', 'color-switch')); ?></th>
                     <td>
-                        <select name="<?php echo CSW_OPTION; ?>[icon_preset]">
-                            <option value="emoji_auto" <?php selected($s['icon_preset'], 'emoji_auto'); ?>>🌙 / ☀️ 自動切替 (絵文字)</option>
-                            <option value="emoji_moon" <?php selected($s['icon_preset'], 'emoji_moon'); ?>>🌙 固定 (絵文字)</option>
-                            <option value="unicode" <?php selected($s['icon_preset'], 'unicode'); ?>>☾ / ☀ 自動切替 (記号)</option>
-                            <option value="text" <?php selected($s['icon_preset'], 'text'); ?>>「ダーク」「ライト」テキスト</option>
-                            <option value="custom" <?php selected($s['icon_preset'], 'custom'); ?>>カスタム (下の欄)</option>
+                        <select name="<?php echo CSW_OPTION; ?>[icon_preset]" id="csw-icon-preset">
+                            <option value="emoji_auto" <?php selected($s['icon_preset'], 'emoji_auto'); ?>>🌙 / ☀️ <?php echo esc_html(__('Auto (emoji)', 'color-switch')); ?></option>
+                            <option value="emoji_moon" <?php selected($s['icon_preset'], 'emoji_moon'); ?>>🌙 <?php echo esc_html(__('Fixed (emoji)', 'color-switch')); ?></option>
+                            <option value="unicode" <?php selected($s['icon_preset'], 'unicode'); ?>>☾ / ☀ <?php echo esc_html(__('Auto (symbols)', 'color-switch')); ?></option>
+                            <option value="text" <?php selected($s['icon_preset'], 'text'); ?>><?php echo esc_html(__('Text', 'color-switch')); ?></option>
+                            <option value="custom" <?php selected($s['icon_preset'], 'custom'); ?>><?php echo esc_html(__('Custom', 'color-switch')); ?></option>
                         </select>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php echo esc_html(__('カスタム: ライト時に表示', 'color-switch')); ?></th>
-                    <td><input type="text" name="<?php echo CSW_OPTION; ?>[icon_custom_light]" value="<?php echo esc_attr($s['icon_custom_light']); ?>" class="regular-text" style="width:160px"> <span class="description"><?php echo esc_html(__('押すとダークモードになるボタンに表示', 'color-switch')); ?></span></td>
+                    <th scope="row"><?php echo esc_html(__('Custom icon', 'color-switch')); ?></th>
+                    <td>
+                        <div id="csw-custom-box"<?php echo $s['icon_preset'] === 'custom' ? '' : ' style="display:none"'; ?>>
+                            <p>
+                                <label><?php echo esc_html(__('Shown in light mode', 'color-switch')); ?><br>
+                                <input type="text" name="<?php echo CSW_OPTION; ?>[icon_custom_light]" value="<?php echo esc_attr($s['icon_custom_light']); ?>" class="regular-text" style="width:160px"></label><br>
+                                <span class="description"><?php echo esc_html(__('Appears on the button that switches to dark mode.', 'color-switch')); ?></span>
+                            </p>
+                            <p>
+                                <label><?php echo esc_html(__('Shown in dark mode', 'color-switch')); ?><br>
+                                <input type="text" name="<?php echo CSW_OPTION; ?>[icon_custom_dark]" value="<?php echo esc_attr($s['icon_custom_dark']); ?>" class="regular-text" style="width:160px"></label><br>
+                                <span class="description"><?php echo esc_html(__('Appears on the button that switches to light mode.', 'color-switch')); ?></span>
+                            </p>
+                        </div>
+                        <p class="description"><?php echo esc_html(__('Used only when the icon type is "Custom".', 'color-switch')); ?></p>
+                    </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php echo esc_html(__('カスタム: ダーク時に表示', 'color-switch')); ?></th>
-                    <td><input type="text" name="<?php echo CSW_OPTION; ?>[icon_custom_dark]" value="<?php echo esc_attr($s['icon_custom_dark']); ?>" class="regular-text" style="width:160px"> <span class="description"><?php echo esc_html(__('押すとライトモードになるボタンに表示', 'color-switch')); ?></span></td>
-                </tr>
-                <tr>
-                    <th scope="row"><?php echo esc_html(__('ボタンの背景色', 'color-switch')); ?></th>
+                    <th scope="row"><?php echo esc_html(__('Button background', 'color-switch')); ?></th>
                     <td><?php csw_color_field(CSW_OPTION . '[button_bg]', $s['button_bg'], csw_defaults()['button_bg']); ?></td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php echo esc_html(__('ボタンのアイコン色', 'color-switch')); ?></th>
+                    <th scope="row"><?php echo esc_html(__('Button icon color', 'color-switch')); ?></th>
                     <td><?php csw_color_field(CSW_OPTION . '[button_color]', $s['button_color'], csw_defaults()['button_color']); ?></td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php echo esc_html(__('表示位置', 'color-switch')); ?></th>
+                    <th scope="row"><?php echo esc_html(__('Position', 'color-switch')); ?></th>
                     <td>
                         <select name="<?php echo CSW_OPTION; ?>[position]">
-                            <option value="bottom_right" <?php selected($s['position'], 'bottom_right'); ?>><?php echo esc_html(__('右下 (フローティング)', 'color-switch')); ?></option>
-                            <option value="bottom_left" <?php selected($s['position'], 'bottom_left'); ?>><?php echo esc_html(__('左下 (フローティング)', 'color-switch')); ?></option>
-                            <option value="top_right" <?php selected($s['position'], 'top_right'); ?>><?php echo esc_html(__('右上 (フローティング)', 'color-switch')); ?></option>
-                            <option value="top_left" <?php selected($s['position'], 'top_left'); ?>><?php echo esc_html(__('左上 (フローティング)', 'color-switch')); ?></option>
-                            <option value="shortcode" <?php selected($s['position'], 'shortcode'); ?>><?php echo esc_html(__('表示しない ([color_switch] 配置時のみ)', 'color-switch')); ?></option>
+                            <option value="bottom_right" <?php selected($s['position'], 'bottom_right'); ?>><?php echo esc_html(__('Bottom right (floating)', 'color-switch')); ?></option>
+                            <option value="bottom_left" <?php selected($s['position'], 'bottom_left'); ?>><?php echo esc_html(__('Bottom left (floating)', 'color-switch')); ?></option>
+                            <option value="top_right" <?php selected($s['position'], 'top_right'); ?>><?php echo esc_html(__('Top right (floating)', 'color-switch')); ?></option>
+                            <option value="top_left" <?php selected($s['position'], 'top_left'); ?>><?php echo esc_html(__('Top left (floating)', 'color-switch')); ?></option>
+                            <option value="shortcode" <?php selected($s['position'], 'shortcode'); ?>><?php echo esc_html(__('Do not show (only where [color_switch] is placed)', 'color-switch')); ?></option>
                         </select>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php echo esc_html(__('初期モード', 'color-switch')); ?></th>
+                    <th scope="row"><?php echo esc_html(__('Initial mode', 'color-switch')); ?></th>
                     <td>
                         <select name="<?php echo CSW_OPTION; ?>[default_mode]">
-                            <option value="auto" <?php selected($s['default_mode'], 'auto'); ?>><?php echo esc_html(__('自動 (OS の設定に従う)', 'color-switch')); ?></option>
-                            <option value="light" <?php selected($s['default_mode'], 'light'); ?>>ライト</option>
-                            <option value="dark" <?php selected($s['default_mode'], 'dark'); ?>>ダーク</option>
+                            <option value="auto" <?php selected($s['default_mode'], 'auto'); ?>><?php echo esc_html(__('Auto (follow the OS setting)', 'color-switch')); ?></option>
+                            <option value="light" <?php selected($s['default_mode'], 'light'); ?>><?php echo esc_html(__('Light', 'color-switch')); ?></option>
+                            <option value="dark" <?php selected($s['default_mode'], 'dark'); ?>><?php echo esc_html(__('Dark', 'color-switch')); ?></option>
                         </select>
-                        <p class="description"><?php echo esc_html(__('訪問者が一度切り替えた後は、その選択がブラウザに保存されて優先されます。', 'color-switch')); ?></p>
+                        <p class="description"><?php echo esc_html(__('Once a visitor switches the scheme, their choice is stored in the browser and takes precedence.', 'color-switch')); ?></p>
                     </td>
                 </tr>
             </table>
             <?php submit_button(); ?>
         </form>
+        <?php csw_admin_color_script(); ?>
+        <script>
+        (function () {
+            var sel = document.getElementById('csw-icon-preset');
+            var box = document.getElementById('csw-custom-box');
+            sel.addEventListener('change', function () {
+                box.style.display = sel.value === 'custom' ? '' : 'none';
+            });
+        })();
+        </script>
 
         <?php elseif ($tab === 'preset'): ?>
-        <h2><?php echo esc_html(__('プリセット', 'color-switch')); ?></h2>
-        <p><?php echo esc_html(__('プリセットを読み込むと、基本カラー・カスタムルール・除外リストが置き換わります（ボタンの設定は保持されます）。', 'color-switch')); ?></p>
-        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-bottom:1em">
-            <?php wp_nonce_field('csw_preset'); ?>
-            <input type="hidden" name="action" value="csw_preset">
-            <input type="hidden" name="preset" value="generic">
-            <?php submit_button(__('汎用プリセットに戻す', 'color-switch'), 'secondary', 'submit', false); ?>
-            <span class="description"><?php echo esc_html(__('基本カラーを初期値に戻し、カスタムルールと除外リストを空にします。', 'color-switch')); ?></span>
-        </form>
+        <?php
+        $presets = csw_presets();
+        $notice = isset($_GET['csw_notice']) ? sanitize_key($_GET['csw_notice']) : '';
+        $messages = array(
+            'saved' => __('Preset saved.', 'color-switch'),
+            'applied' => __('Preset applied. The rules and exceptions were replaced.', 'color-switch'),
+            'deleted' => __('Preset deleted.', 'color-switch'),
+            'cap' => __('The preset limit has been reached. Please delete a preset first.', 'color-switch'),
+            'imported' => __('Presets imported.', 'color-switch'),
+            'import_cap' => __('Import cancelled: it would exceed the preset limit. Please delete some presets first.', 'color-switch'),
+            'import_format' => __('Import failed: the file format was not recognized.', 'color-switch'),
+            'notfound' => __('The preset was not found.', 'color-switch'),
+        );
+        if ($notice !== '' && isset($messages[$notice])): ?>
+        <div class="notice notice-<?php echo in_array($notice, array('saved', 'applied', 'deleted', 'imported'), true) ? 'success' : 'warning'; ?> is-dismissible"><p><?php echo esc_html($messages[$notice]); ?></p></div>
+        <?php endif; ?>
+        <h2><?php echo esc_html(__('Save the current rules as a preset', 'color-switch')); ?></h2>
+        <p class="description"><?php echo esc_html(__('A preset stores the current rules and exceptions. Button settings are not included.', 'color-switch')); ?></p>
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-            <?php wp_nonce_field('csw_preset'); ?>
-            <input type="hidden" name="action" value="csw_preset">
-            <input type="hidden" name="preset" value="cocoon">
-            <?php submit_button(__('Cocoon プリセットを読み込む', 'color-switch'), 'secondary', 'submit', false); ?>
-            <span class="description"><?php echo esc_html(__('テーマ Cocoon 向けの基本カラーとルール一式を設定します。', 'color-switch')); ?></span>
+            <?php wp_nonce_field('csw_preset_action'); ?>
+            <input type="hidden" name="action" value="csw_preset_action">
+            <input type="hidden" name="op" value="save">
+            <input type="text" name="preset_title" class="regular-text" required placeholder="<?php echo esc_attr(__('Preset title', 'color-switch')); ?>">
+            <?php submit_button(__('Save preset', 'color-switch'), 'secondary', 'submit', false); ?>
+            <span class="description"><?php echo esc_html(sprintf(__('You can save up to %d presets. (%d / %d)', 'color-switch'), CSW_PRESET_MAX, count($presets), CSW_PRESET_MAX)); ?></span>
         </form>
-        <p class="description"><?php echo esc_html(__('従来プラグイン (chris-dark-mode-toggle) の設定引き継ぎは、今後のフェーズで対応予定です。', 'color-switch')); ?></p>
+
+        <h2><?php echo esc_html(__('Saved presets', 'color-switch')); ?></h2>
+        <?php if (!$presets): ?>
+        <p><?php echo esc_html(__('No presets yet.', 'color-switch')); ?></p>
+        <?php else: ?>
+        <table class="widefat striped" style="max-width:820px">
+            <thead><tr>
+                <th><?php echo esc_html(__('Title', 'color-switch')); ?></th>
+                <th style="width:80px"><?php echo esc_html(__('Rules', 'color-switch')); ?></th>
+                <th style="width:150px"><?php echo esc_html(__('Saved on', 'color-switch')); ?></th>
+                <th style="width:190px"></th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ($presets as $p): ?>
+                <tr>
+                    <td><?php echo esc_html($p['title']); ?></td>
+                    <td><?php echo esc_html(count((array) $p['rules'])); ?></td>
+                    <td><?php echo esc_html(isset($p['created']) ? date_i18n(get_option('date_format'), (int) $p['created']) : ''); ?></td>
+                    <td>
+                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline">
+                            <?php wp_nonce_field('csw_preset_action'); ?>
+                            <input type="hidden" name="action" value="csw_preset_action">
+                            <input type="hidden" name="op" value="apply">
+                            <input type="hidden" name="preset_id" value="<?php echo esc_attr($p['id']); ?>">
+                            <?php submit_button(__('Apply', 'color-switch'), 'secondary small', 'submit', false); ?>
+                        </form>
+                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline" onsubmit="return confirm('<?php echo esc_js(__('Delete this preset?', 'color-switch')); ?>')">
+                            <?php wp_nonce_field('csw_preset_action'); ?>
+                            <input type="hidden" name="action" value="csw_preset_action">
+                            <input type="hidden" name="op" value="delete">
+                            <input type="hidden" name="preset_id" value="<?php echo esc_attr($p['id']); ?>">
+                            <?php submit_button(__('Delete', 'color-switch'), 'secondary small csw-del', 'submit', false); ?>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+
+        <h2><?php echo esc_html(__('Export / Import', 'color-switch')); ?></h2>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-bottom:1em">
+            <?php wp_nonce_field('csw_preset_action'); ?>
+            <input type="hidden" name="action" value="csw_preset_action">
+            <input type="hidden" name="op" value="export">
+            <?php submit_button(__('Export presets (JSON)', 'color-switch'), 'secondary', 'submit', false); ?>
+            <span class="description"><?php echo esc_html(__('Downloads all saved presets as one JSON file.', 'color-switch')); ?></span>
+        </form>
+        <form method="post" enctype="multipart/form-data" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <?php wp_nonce_field('csw_preset_action'); ?>
+            <input type="hidden" name="action" value="csw_preset_action">
+            <input type="hidden" name="op" value="import">
+            <input type="file" name="csw_import_file" accept=".json,application/json" required>
+            <?php submit_button(__('Import presets', 'color-switch'), 'secondary', 'submit', false); ?>
+            <span class="description"><?php echo esc_html(__('Imported presets are added to the list above. Apply one to change the current rules. If the import would exceed the preset limit, nothing is imported.', 'color-switch')); ?></span>
+        </form>
         <?php endif; ?>
     </div>
     <?php
 }
 
-function csw_rule_color($name, $value) {
-    $picker = ($value !== '' && $value[0] === '#') ? $value : '#303030';
-    ?>
-    <input type="color" value="<?php echo esc_attr($picker); ?>" onchange="this.nextElementSibling.value=this.value">
-    <input type="text" name="<?php echo esc_attr($name); ?>" value="<?php echo esc_attr($value); ?>" style="width:90px" placeholder="#rrggbb">
-    <?php
-}
+/* ---------------- Preset actions ---------------- */
 
-/* ---------------- プリセット ---------------- */
-
-function csw_preset_generic() {
-    $d = csw_defaults();
-    return $d;
-}
-
-function csw_preset_cocoon() {
-    $p = csw_defaults();
-    // 基本カラー (Cocoon 検証で使っていたパレット)
-    $p['dark_bg'] = '#242424';
-    $p['dark_surface'] = '#303030';
-    $p['dark_text'] = '#ffffff';
-    $p['dark_link'] = '#22c7e8';
-    $p['dark_link_hover'] = '#edb90e';
-    $p['dark_accent'] = '#edb90e';
-    $p['button_bg'] = '#393939';
-    $p['button_color'] = '#ffffff';
-    // 除外: SNS ボタン、商品リンク、Code Block Pro は元の色のまま
-    $p['exclude_selectors'] = implode("\n", array(
-        '.sns-share-buttons',
-        '.sns-follow-buttons',
-        '.sns-buttons',
-        '[class*="shoplink"]',
-        '.wp-block-kevinbatdorf-code-block-pro',
-    ));
-    $box24 = '.information-box, .information, .question-box, .question, .alert-box, .alert, '
-        . '.memo-box, .comment-box, .ok-box, .ng-box, .profile-box, .good-box, .bad-box, '
-        . '.is-style-information-box, .is-style-question-box, .is-style-alert-box, .is-style-memo-box, '
-        . '.is-style-comment-box, .is-style-ok-box, .is-style-ng-box, .is-style-profile-box, '
-        . '.is-style-good-box, .is-style-bad-box';
-    $p['rules'] = array(
-        array('selector' => '#header, .header', 'bg' => '#1b1b1b', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '.header-in', 'bg' => 'transparent', 'color' => '', 'border' => '', 'enabled' => 1),
-        array('selector' => '.header a, .site-name-text', 'bg' => '', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '.navi, .navi-in, .menu-drawer', 'bg' => '#242424', 'color' => '', 'border' => '', 'enabled' => 1),
-        array('selector' => '.navi a, .menu-drawer a', 'bg' => '', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '.cat-label, .cat-label-2', 'bg' => '#22c7e8', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '.sidebar, #sidebar', 'bg' => '#303030', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '.footer-container, .footer, .footer-bottom', 'bg' => '#303030', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '.main', 'bg' => '#242424', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '.entry-card, .blogcard-wrap, .blogcard, .author-box, .widget, .popular-entry-card, .new-entry-card, .toc, .speech-balloon, .info-list, .a-wrap', 'bg' => '#303030', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '[class*="wp-block-cocoon-blocks-"]:not([class*="button"]):not([class*="btn"])', 'bg' => '#303030', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '[class*="wp-block-cocoon-blocks-"] .box-title, [class*="wp-block-cocoon-blocks-"] .icon-box-title, [class*="wp-block-cocoon-blocks-"] .label-box-label, [class*="wp-block-cocoon-blocks-"] .tab-label, [class*="wp-block-cocoon-blocks-"] p, [class*="wp-block-cocoon-blocks-"] li', 'bg' => '', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => $box24, 'bg' => '#303030', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '.page-numbers, .post-page-numbers', 'bg' => '', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '.page-numbers.dots', 'bg' => '#303030', 'color' => '', 'border' => '', 'enabled' => 1),
-        array('selector' => '.pagination-next-link, .comment-btn', 'bg' => '#303030', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => '.footer-container a, .footer a, .navi-footer a, .navi-footer-in a, .footer-navi a, .menu-footer a, .footer-bottom a, .copyright a', 'bg' => '', 'color' => '#ffffff', 'border' => '', 'enabled' => 1),
-        array('selector' => 'table tr, table tr:nth-child(odd), table tr:nth-child(even)', 'bg' => 'transparent', 'color' => '', 'border' => '', 'enabled' => 1),
-        array('selector' => '.tab-label-group .tab-label:not(.is-active)', 'bg' => '', 'color' => 'var(--cocoon-text-color)', 'border' => '', 'enabled' => 1),
-        array('selector' => '.wp-block-code, .wp-block-code code', 'bg' => '#303030', 'color' => '', 'border' => '', 'enabled' => 1),
-    );
-    return $p;
-}
-
-add_action('admin_post_csw_preset', function () {
+add_action('admin_post_csw_preset_action', function () {
     if (!current_user_can('manage_options')) wp_die('forbidden');
-    check_admin_referer('csw_preset');
-    $preset = isset($_POST['preset']) ? sanitize_key($_POST['preset']) : '';
-    $current = csw_settings();
-    if ($preset === 'generic') {
-        $new = csw_preset_generic();
-    } elseif ($preset === 'cocoon') {
-        $new = csw_preset_cocoon();
-    } else {
-        wp_safe_redirect(admin_url('options-general.php?page=color-switch&tab=preset'));
+    check_admin_referer('csw_preset_action');
+    $back = admin_url('options-general.php?page=color-switch&tab=preset');
+    $op = isset($_POST['op']) ? sanitize_key($_POST['op']) : '';
+
+    if ($op === 'save') {
+        $title = isset($_POST['preset_title']) ? sanitize_text_field(wp_unslash($_POST['preset_title'])) : '';
+        if ($title === '') $title = __('Untitled preset', 'color-switch');
+        $r = csw_preset_save_current($title);
+        wp_safe_redirect($back . '&csw_notice=' . ($r === 'cap' ? 'cap' : 'saved'));
         exit;
     }
-    // ボタンの設定はプリセット対象外 (保持する)
-    foreach (array('button_bg', 'button_color', 'icon_preset', 'icon_custom_light', 'icon_custom_dark', 'position', 'default_mode') as $k) {
-        $new[$k] = $current[$k];
+    if ($op === 'apply' || $op === 'delete') {
+        $id = isset($_POST['preset_id']) ? sanitize_text_field(wp_unslash($_POST['preset_id'])) : '';
+        $ok = ($op === 'apply') ? csw_preset_apply($id) : csw_preset_delete($id);
+        wp_safe_redirect($back . '&csw_notice=' . ($ok ? ($op === 'apply' ? 'applied' : 'deleted') : 'notfound'));
+        exit;
     }
-    // アイコンは保存形式 (base64) にそろえる
-    foreach (array('icon_custom_light', 'icon_custom_dark') as $k) {
-        $new[$k] = csw_icon_encode(csw_icon_decode((string) $new[$k]));
+    if ($op === 'export') {
+        $json = wp_json_encode(csw_presets_export_data(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="colorswitch-presets.json"');
+        echo $json;
+        exit;
     }
-    update_option(CSW_OPTION, $new);
-    wp_safe_redirect(admin_url('options-general.php?page=color-switch&tab=preset&settings-updated=true'));
+    if ($op === 'import') {
+        if (empty($_FILES['csw_import_file']['tmp_name']) || !is_uploaded_file($_FILES['csw_import_file']['tmp_name'])) {
+            wp_safe_redirect($back . '&csw_notice=import_format');
+            exit;
+        }
+        $raw = file_get_contents($_FILES['csw_import_file']['tmp_name']);
+        $data = json_decode((string) $raw, true);
+        $res = csw_presets_import_data($data);
+        if ($res === 'cap') {
+            wp_safe_redirect($back . '&csw_notice=import_cap');
+            exit;
+        }
+        if (!is_array($res)) {
+            wp_safe_redirect($back . '&csw_notice=import_format');
+            exit;
+        }
+        csw_presets_save(array_merge(csw_presets_raw(), $res));
+        wp_safe_redirect($back . '&csw_notice=imported');
+        exit;
+    }
+    wp_safe_redirect($back);
     exit;
 });
 
-/* ---------------- フロント ---------------- */
+/* ---------------- Front end ---------------- */
 
 function csw_icons($s) {
     switch ($s['icon_preset']) {
         case 'emoji_moon': return array('🌙', '🌙');
         case 'unicode':    return array('☾', '☀');
-        case 'text':       return array('ダーク', 'ライト');
+        case 'text':       return array(__('Dark', 'color-switch'), __('Light', 'color-switch'));
         case 'custom':     return array($s['icon_custom_light'], $s['icon_custom_dark']);
         default:           return array('🌙', '☀️'); // emoji_auto
     }
@@ -481,7 +841,7 @@ function csw_position_css($s) {
     }
 }
 
-/* 除外リストから :not() の断片を作る (例: array('.a') → ':not(.a a)') */
+/* Build a :not() chain from the exception list (e.g. array('.a') -> ':not(.a a)') */
 function csw_not_chain($excludes, $inner) {
     $out = '';
     foreach ($excludes as $ex) {
@@ -490,7 +850,7 @@ function csw_not_chain($excludes, $inner) {
     return $out;
 }
 
-// FOUC 防止スクリプトだけは最優先 (head の先頭)
+// The FOUC guard script comes first in <head>
 add_action('wp_head', function () {
     $s = csw_settings();
     ?>
@@ -507,83 +867,43 @@ add_action('wp_head', function () {
     <?php
 }, 1);
 
-// CSS 本体はテーマのスタイルシートより後 (priority 999) に出す
+// The CSS itself is printed after theme stylesheets (priority 999)
 add_action('wp_head', function () {
     $s = csw_settings();
     $excludes = csw_parse_excludes($s['exclude_selectors']);
     $a_not = csw_not_chain($excludes, 'a');
-    $pre_not = '';
-    $code_not = '';
-    foreach ($excludes as $ex) {
-        $pre_not .= ':not(' . $ex . '):not(' . $ex . ' pre)';
-        $code_not .= ':not(' . $ex . ' code)';
-    }
     ?>
     <style id="color-switch-css">
     :root {
-        --csw-bg: <?php echo esc_html($s['dark_bg']); ?>;
-        --csw-surface: <?php echo esc_html($s['dark_surface']); ?>;
-        --csw-text: <?php echo esc_html($s['dark_text']); ?>;
-        --csw-link: <?php echo esc_html($s['dark_link']); ?>;
-        --csw-link-hover: <?php echo esc_html($s['dark_link_hover']); ?>;
-        --csw-accent: <?php echo esc_html($s['dark_accent']); ?>;
         --csw-btn-bg: <?php echo esc_html($s['button_bg']); ?>;
         --csw-btn-color: <?php echo esc_html($s['button_color']); ?>;
     }
     html.dark-mode { color-scheme: dark; }
-    html.dark-mode body { background-color: var(--csw-bg) !important; color: var(--csw-text) !important; }
-    html.dark-mode ::selection { background: var(--csw-accent); color: #393939; }
-
-    /* 汎用: ヘッダー/フッター/サイドバー相当 */
-    html.dark-mode header, html.dark-mode footer, html.dark-mode aside {
-        background-color: var(--csw-surface) !important; color: var(--csw-text) !important;
-    }
-    html.dark-mode header a, html.dark-mode footer a, html.dark-mode aside a {
-        color: var(--csw-text) !important;
-    }
-
-    /* 汎用: 見出し・本文 */
-    html.dark-mode h1, html.dark-mode h2, html.dark-mode h3, html.dark-mode h4,
-    html.dark-mode h5, html.dark-mode h6, html.dark-mode p, html.dark-mode li,
-    html.dark-mode dt, html.dark-mode dd, html.dark-mode label, html.dark-mode figcaption,
-    html.dark-mode td, html.dark-mode th {
-        color: var(--csw-text) !important;
-    }
-
-    /* 汎用: リンク (除外リスト配下は元の色のまま) */
-    html.dark-mode a<?php echo $a_not; ?> { color: var(--csw-link) !important; }
-    html.dark-mode a<?php echo $a_not; ?>:hover { color: var(--csw-link-hover) !important; }
-    html.dark-mode header a, html.dark-mode footer a, html.dark-mode aside a { color: var(--csw-text) !important; }
-
-    /* 汎用: 表 */
-    html.dark-mode table { background-color: transparent !important; color: var(--csw-text) !important; border-color: #555 !important; }
-    html.dark-mode th { background-color: var(--csw-surface) !important; color: var(--csw-text) !important; border-color: #555 !important; }
-    html.dark-mode td { background-color: transparent !important; color: var(--csw-text) !important; border-color: #555 !important; }
-
-    /* 汎用: フォームとコード (除外リスト配下の pre/code は触らない) */
-    html.dark-mode input, html.dark-mode textarea, html.dark-mode select {
-        background-color: var(--csw-surface) !important; color: var(--csw-text) !important; border-color: #555 !important;
-    }
-    html.dark-mode pre<?php echo $pre_not; ?>, html.dark-mode code<?php echo $code_not; ?> {
-        background-color: var(--csw-surface) !important; color: var(--csw-text) !important; border-color: #555 !important;
-    }
-    <?php if (!empty($s['img_dim'])): ?>
-    html.dark-mode img { filter: brightness(.92) contrast(1.02); }
-    <?php endif; ?>
-
-    /* カスタムルール */
     <?php foreach ($s['rules'] as $r): ?>
-    <?php if (empty($r['enabled']) || $r['selector'] === '') continue; ?>
     <?php
+        if (empty($r['enabled']) || $r['selector'] === '') continue;
         $decls = array();
         if ($r['bg'] !== '') $decls[] = 'background-color: ' . $r['bg'] . ' !important;';
         if ($r['color'] !== '') $decls[] = 'color: ' . $r['color'] . ' !important;';
         if ($r['border'] !== '') $decls[] = 'border-color: ' . $r['border'] . ' !important;';
         if (!$decls) continue;
+        $is_link = isset($r['core']) && ($r['core'] === 'link' || $r['core'] === 'link_hover');
         $parts = array();
         foreach (explode(',', $r['selector']) as $part) {
             $part = trim($part);
             if ($part === '') continue;
+            if ($is_link) {
+                // Links under exception elements keep their original color
+                $part = preg_replace('/^a(?=[\s\.\#\:\[]|$)/', 'a' . $a_not, $part, 1);
+            }
+            if (preg_match('/^(pre|code)(?=[\s\.\#\:\[]|$)/', $part, $mm)) {
+                // pre / code rules do not touch exception elements or their contents
+                $chain = '';
+                foreach ($excludes as $ex) {
+                    $chain .= ':not(' . $ex . '):not(' . $ex . ' ' . $mm[1] . ')';
+                }
+                $part = $mm[1] . $chain . substr($part, strlen($mm[1]));
+            }
             if (strpos($part, 'html.dark-mode') !== 0) $part = 'html.dark-mode ' . $part;
             $parts[] = str_replace('</', '<\/', $part);
         }
@@ -591,6 +911,9 @@ add_action('wp_head', function () {
     ?>
     <?php echo implode(', ', $parts); ?> { <?php echo implode(' ', $decls); ?> }
     <?php endforeach; ?>
+    <?php if (!empty($s['img_dim'])): ?>
+    html.dark-mode img { filter: brightness(.92) contrast(1.02); }
+    <?php endif; ?>
 
     .csw-toggle-btn {
         min-width: 48px; height: 48px; padding: 0 10px; border-radius: 9999px;
@@ -610,7 +933,7 @@ add_action('wp_head', function () {
 function csw_button_html($s, $id) {
     list($iconLight, $iconDark) = csw_icons($s);
     $idAttr = $id ? ' id="' . esc_attr($id) . '"' : '';
-    return '<button' . $idAttr . ' type="button" class="csw-toggle-btn" aria-label="' . esc_attr(__('カラースキーム切替', 'color-switch')) . '" title="' . esc_attr(__('カラースキーム切替', 'color-switch')) . '" data-icon-light="' . esc_attr($iconLight) . '" data-icon-dark="' . esc_attr($iconDark) . '">' . esc_html($iconLight) . '</button>';
+    return '<button' . $idAttr . ' type="button" class="csw-toggle-btn" aria-label="' . esc_attr(__('Color scheme toggle', 'color-switch')) . '" title="' . esc_attr(__('Color scheme toggle', 'color-switch')) . '" data-icon-light="' . esc_attr($iconLight) . '" data-icon-dark="' . esc_attr($iconDark) . '">' . esc_html($iconLight) . '</button>';
 }
 
 add_action('wp_footer', function () {
@@ -645,7 +968,7 @@ add_action('wp_footer', function () {
 add_shortcode('color_switch', function () {
     return csw_button_html(csw_settings(), '');
 });
-// 従来プラグインからの互換用エイリアス
+// Alias kept for compatibility with the previous plugin
 add_shortcode('dark_mode_toggle', function () {
     return csw_button_html(csw_settings(), '');
 });
