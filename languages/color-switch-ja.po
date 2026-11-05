@@ -1,10 +1,16 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: ColorSwitch 1.2.0\n"
+"Project-Id-Version: ColorSwitch 1.0.0\n"
 "Language: ja\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(0 = opaque, 100 = fully transparent)"
+msgstr "（0で不透明、100で完全透明）"
+
+msgid "A preset stores the current rules (including their On/Off states) and exceptions. Button settings are not included."
+msgstr "プリセットには現在のルール（有効チェックの状態も含む）と例外指定が保存されます。ボタンの設定は含まれません。"
 
 msgid "A preset stores the current rules and exceptions. Button settings are not included."
 msgstr "プリセットには現在のルールと例外指定が保存されます。ボタンの設定は含まれません。"
@@ -24,6 +30,9 @@ msgstr "ライトモードに切り替えるボタンに表示されます。"
 msgid "Apply"
 msgstr "適用"
 
+msgid "Applying the preset failed: the saved values could not be verified."
+msgstr "プリセットの適用に失敗しました。保存内容を確認できませんでした。"
+
 msgid "Auto (emoji)"
 msgstr "自動切替（絵文字）"
 
@@ -33,7 +42,13 @@ msgstr "自動（OSの設定に従う）"
 msgid "Auto (symbols)"
 msgstr "自動切替（記号）"
 
+msgid "Automatically switch when the OS is in dark mode"
+msgstr "OSがダークモードの場合は自動スイッチ"
+
 msgid "Background"
+msgstr "背景色"
+
+msgid "Background color"
 msgstr "背景色"
 
 msgid "Border color"
@@ -54,8 +69,20 @@ msgstr "ボタンの背景色"
 msgid "Button icon color"
 msgstr "ボタンのアイコン色"
 
+msgid "Button shape"
+msgstr "ボタンの形状"
+
+msgid "Button size"
+msgstr "ボタンサイズ"
+
+msgid "Circle"
+msgstr "丸"
+
 msgid "Color scheme toggle"
 msgstr "カラースキーム切替"
+
+msgid "Corner radius"
+msgstr "角丸の半径"
 
 msgid "Custom"
 msgstr "カスタム"
@@ -78,6 +105,9 @@ msgstr "このプリセットを削除しますか？"
 msgid "Dim images slightly"
 msgstr "画像を少し暗くする"
 
+msgid "Distance from the edge of the screen. Applies to the floating positions."
+msgstr "画面の端からの距離です。フローティング表示のときに適用されます。"
+
 msgid "Do not show (only where [color_switch] is placed)"
 msgstr "表示しない（[color_switch] 配置時のみ）"
 
@@ -99,6 +129,21 @@ msgstr "プリセットをエクスポート（JSON）"
 msgid "Fixed (emoji)"
 msgstr "固定（絵文字）"
 
+msgid "Font family"
+msgstr "フォント"
+
+msgid "Font size"
+msgstr "文字サイズ"
+
+msgid "Font weight"
+msgstr "文字の太さ"
+
+msgid "For Font Awesome, enter class names such as \"fa-solid fa-moon\". Font Awesome must be loaded on the site, and Font Awesome must also be specified in the Font family field."
+msgstr "Font Awesomeを使う場合は「fa-solid fa-moon」のようなクラス名を入力してください。サイト側でFont Awesomeを読み込んだ上で、フォントにFont Awesomeを記述する必要があります。"
+
+msgid "Horizontal offset"
+msgstr "横オフセット"
+
 msgid "Icon"
 msgstr "アイコン"
 
@@ -117,8 +162,17 @@ msgstr "プリセットをインポート"
 msgid "Imported presets are added to the list above. Apply one to change the current rules. If the import would exceed the preset limit, nothing is imported."
 msgstr "インポートしたプリセットは上の一覧に追加されます。適用すると現在のルールに反映されます。保存件数の上限を超える場合は何もインポートされません。"
 
+msgid "Initial display"
+msgstr "初期表示"
+
 msgid "Initial mode"
 msgstr "初期モード"
+
+msgid "Leave a color empty to use the normal-state color."
+msgstr "色を空欄にすると通常時と同じ色になります。"
+
+msgid "Leave empty to use the theme font. A CSS font-family value, e.g. \"Font Awesome 6 Free\", sans-serif."
+msgstr "空欄にするとテーマのフォントを使います。CSSのfont-family形式で指定できます（例: \"Font Awesome 6 Free\", sans-serif）。"
 
 msgid "Light"
 msgstr "ライト"
@@ -134,6 +188,12 @@ msgstr "上へ"
 
 msgid "No presets yet."
 msgstr "プリセットはまだありません。"
+
+msgid "Normal"
+msgstr "通常"
+
+msgid "Normal state"
+msgstr "通常時"
 
 msgid "On"
 msgstr "有効"
@@ -162,6 +222,12 @@ msgstr "プリセット"
 msgid "Presets imported."
 msgstr "プリセットをインポートしました。"
 
+msgid "Preview"
+msgstr "プレビュー"
+
+msgid "Rounded"
+msgstr "角丸"
+
 msgid "Rules"
 msgstr "ルール"
 
@@ -189,6 +255,18 @@ msgstr "ダーク時に表示"
 msgid "Shown in light mode"
 msgstr "ライト時に表示"
 
+msgid "Square"
+msgstr "四角"
+
+msgid "Switched"
+msgstr "スイッチ"
+
+msgid "Switched state"
+msgstr "スイッチ時"
+
+msgid "Switched state colors"
+msgstr "スイッチ時の色"
+
 msgid "Text"
 msgstr "テキスト"
 
@@ -201,6 +279,9 @@ msgstr "保存件数の上限に達しています。先にどれかプリセッ
 msgid "The preset was not found."
 msgstr "プリセットが見つかりませんでした。"
 
+msgid "Theme default"
+msgstr "テーマ既定"
+
 msgid "Title"
 msgstr "タイトル"
 
@@ -210,11 +291,20 @@ msgstr "左上（フローティング）"
 msgid "Top right (floating)"
 msgstr "右上（フローティング）"
 
+msgid "Transparency"
+msgstr "透過度"
+
 msgid "Untitled preset"
 msgstr "無題のプリセット"
 
+msgid "Use separate colors for the switched state"
+msgstr "スイッチ時の色を個別に指定"
+
 msgid "Used only when the icon type is \"Custom\"."
 msgstr "アイコン種別が「カスタム」のときだけ使われます。"
+
+msgid "Vertical offset"
+msgstr "縦オフセット"
 
 msgid "Write one per line. You can add a memo after \"//\" (e.g. code //Code block)."
 msgstr "1行に1つ記載してください。「//」のあとにメモを書けます（例: code //コードブロック）"
