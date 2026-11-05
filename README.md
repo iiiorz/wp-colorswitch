@@ -4,11 +4,11 @@
 ダークモード切替ボタンとしても、まったく違う色合いへの切替ボタンとしても使えます。
 英語と日本語対応。
 
----
-
 A WordPress plugin that adds a button for switching color schemes.
 It works as a dark mode toggle, or as a switch to a completely different color palette.
 Available in English and Japanese.
+
+<a href="https://ko-fi.com/tayura" target="_blank"><img height="36" style="border:0px;height:36px;" src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" border="0" alt="Buy Me a Coffee at ko-fi.com" /></a>
 
 ## 特徴 / Features
 
@@ -16,8 +16,6 @@ Available in English and Japanese.
 - **例外指定**: 色を変えたくない要素をセレクタ指定で対象外に。
 - **プリセット**: 現在のルール＋例外指定をプリセットとして保存。JSON でエクスポート／インポート可能。
 - **切替ボタン**: 絵文字・記号・カスタム文字（絵文字やFont Awesome のクラス名も指定可）から選んでボタンに表示。ページの四隅フローティング or ショートコードで設置場所も選べます。文字スタイル、ボタンサイズ、形状（丸／角丸／四角）、位置オフセット（px）等のカスタマイズをボタンのライブプレビューで確認しながら設定可能。
-
----
 
 - **Highly flexible configuration**: Not just dark mode — build your color scheme from a rule list of "selector × background color / text color / border color".
 - **Exceptions**: Exclude elements you don't want recolored by specifying their selectors.
@@ -30,8 +28,6 @@ Available in English and Japanese.
 2. 管理画面で有効化
 3. 設定 > ColorSwitch から設定
 
----
-
 1. Upload the zip from the admin screen, or place `color-switch.php` and `languages/` in `wp-content/plugins/color-switch/`
 2. Activate it on the admin screen
 3. Configure it under Settings > ColorSwitch
@@ -40,13 +36,13 @@ Available in English and Japanese.
 
 - WordPress 6.5+ 推奨（日本語は `.l10n.php` 形式。それ以前の環境向けに `.mo` も同梱 — リポジトリにはテキスト形式の `.po` / `.l10n.php` のみ収録し、`.mo` は配布 zip に含まれます）
 
----
-
 - WordPress 6.5+ recommended (Japanese translations use the `.l10n.php` format; a `.mo` file is also included for older environments — the repository contains only the text-format `.po` / `.l10n.php`, and the `.mo` is included in the distribution zip)
 
 ## リリースノート / Release Notes
 
-- v1.0.0 — 初版 First release
+- v1.0.0 — 初版
+
+- v1.0.0 — First release
 
 ## 画面イメージ / Screenshots
 
@@ -55,6 +51,12 @@ Available in English and Japanese.
 
 [(2)ボタン / Button](https://github.com/user-attachments/assets/e0cec9a8-6c45-49a1-b38b-8e2b2e7964d7), [(3)プリセット / Presets](https://github.com/user-attachments/assets/e0cec9a8-6c45-49a1-b38b-8e2b2e7964d7)
 
+
+## 支援 / Support
+
+このプラグインが役に立ったら、[Ko-fi](https://ko-fi.com/tayura) で開発支援をいただけると嬉しいです。
+
+If this plugin helps you, I'd appreciate your support on [Ko-fi](https://ko-fi.com/tayura).
 
 ## ライセンス / License
 
