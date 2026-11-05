@@ -2,6 +2,7 @@
 
 カラースキームを切り替えるボタンを設置できるWordPressプラグイン。
 ダークモード切替ボタンとしても、まったく違う色合いへの切替ボタンとしても使えます。
+英語と日本語対応。
 
 A theme-independent color scheme (dark mode) toggle plugin for WordPress.
 A single PHP file (`color-switch.php`) plus language files.
