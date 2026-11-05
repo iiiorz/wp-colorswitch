@@ -23,12 +23,11 @@ Available in English and Japanese.
 ## インストール / Installation
 
 1. zip を管理画面からアップロードするか、`color-switch.php` と `languages/` を `wp-content/plugins/color-switch/` に置く
-2. 管理画面で有効化
-3. 設定 > ColorSwitch から設定
-
-1. Upload the zip from the admin screen, or place `color-switch.php` and `languages/` in `wp-content/plugins/color-switch/`
-2. Activate it on the admin screen
-3. Configure it under Settings > ColorSwitch
+Upload the zip from the admin screen, or place `color-switch.php` and `languages/` in `wp-content/plugins/color-switch/`
+3. 管理画面で有効化
+Activate it on the admin screen
+4. 設定 > ColorSwitch から設定
+Configure it under Settings > ColorSwitch
 
 ## 動作環境 / Requirements
 
@@ -38,9 +37,7 @@ Available in English and Japanese.
 
 ## リリースノート / Release Notes
 
-- v1.0.0 — 初版
-
-- v1.0.0 — First release
+- v1.0.0 — 初版 First release
 
 ## 画面イメージ / Screenshots
 
