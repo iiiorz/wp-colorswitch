@@ -29,11 +29,11 @@ A single PHP file (`color-switch.php`) plus language files.
 
 ## 画面イメージ
 
-<img width="1369" height="938" alt="Image" src="https://github.com/user-attachments/assets/55018266-37b0-47f0-b1ac-f94a833c08ba" />
+<img width="1369" height="938" alt="Image" src="https://github.com/user-attachments/assets/55018266-37b0-47f0-b1ac-f94a833c08ba" style="height: 300px; width: auto;"/>
 
-<img width="981" height="1767" alt="Image" src="https://github.com/user-attachments/assets/e0cec9a8-6c45-49a1-b38b-8e2b2e7964d7" />
+<img width="981" height="1767" alt="Image" src="https://github.com/user-attachments/assets/e0cec9a8-6c45-49a1-b38b-8e2b2e7964d7" style="height: 300px; width: auto;"/>
 
-<img width="1317" height="599" alt="Image" src="https://github.com/user-attachments/assets/d36c5754-fb0c-4891-a675-e717c827dc20" />
+<img width="1317" height="599" alt="Image" src="https://github.com/user-attachments/assets/d36c5754-fb0c-4891-a675-e717c827dc20" style="height: 300px; width: auto;"/>
 
 
 ## ライセンス / License
