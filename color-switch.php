@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ColorSwitch
  * Description: A theme-independent color scheme (dark mode) toggle plugin. Everything is a rule: selector × colors, with exceptions, memos and user presets.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: iiiiorz
  * License: GPL-2.0-or-later
  * Text Domain: color-switch
@@ -17,8 +17,10 @@
  * - Free-text values (custom icons, rule memos, preset titles) are stored
  *   base64-encoded so that 4-byte characters (emoji) cannot silently fail to
  *   save on utf8mb3 databases.
- * - v1.1: base colors were folded into the rule list. Four core rules
- *   (background / text / link / link hover) always exist and cannot be deleted.
+ * - v1.1: base colors were folded into the rule list.
+ * - v1.2: no special "core" rules — every rule can be edited, reordered or
+ *   deleted. The list order is the priority order (top wins on ties), and
+ *   exceptions outrank every rule.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -45,41 +47,18 @@ function csw_txt_decode($v) {
     return $v;
 }
 
-/* ---------------- Rules: core + starters ---------------- */
+/* ---------------- Rules ---------------- */
 
-/* Core rules always exist and cannot be deleted. Memo text is data, not UI. */
-function csw_core_rules() {
+/* Initial rules for a fresh install. Every rule is an ordinary rule:
+   it can be edited, reordered and deleted. */
+function csw_initial_rules() {
     return array(
-        array('core' => 'bg', 'selector' => 'body',
-              'bg' => '#242424', 'color' => '', 'border' => '', 'enabled' => 1, 'memo' => '背景色'),
-        array('core' => 'text', 'selector' => 'body, h1, h2, h3, h4, h5, h6, p, li, dt, dd, label, figcaption, td, th',
-              'bg' => '', 'color' => '#ffffff', 'border' => '', 'enabled' => 1, 'memo' => '文字色'),
-        array('core' => 'link', 'selector' => 'a',
+        array('selector' => 'body',
+              'bg' => '#242424', 'color' => '#ffffff', 'border' => '', 'enabled' => 1, 'memo' => '背景色・文字色'),
+        array('selector' => 'a',
               'bg' => '', 'color' => '#6cb2f5', 'border' => '', 'enabled' => 1, 'memo' => 'リンク'),
-        array('core' => 'link_hover', 'selector' => 'a:hover',
+        array('selector' => 'a:hover',
               'bg' => '', 'color' => '#a8cfff', 'border' => '', 'enabled' => 1, 'memo' => 'リンクホバー'),
-    );
-}
-
-/* Deletable starter rules that reproduce the old generic base look. */
-function csw_starter_rules() {
-    return array(
-        array('core' => '', 'selector' => 'header, footer, aside',
-              'bg' => '#303030', 'color' => '#ffffff', 'border' => '', 'enabled' => 1, 'memo' => '面（ヘッダー・フッター・サイドバー）'),
-        array('core' => '', 'selector' => 'header a, footer a, aside a',
-              'bg' => '', 'color' => '#ffffff', 'border' => '', 'enabled' => 1, 'memo' => '面の中のリンク'),
-        array('core' => '', 'selector' => 'table',
-              'bg' => 'transparent', 'color' => '#ffffff', 'border' => '#555555', 'enabled' => 1, 'memo' => '表'),
-        array('core' => '', 'selector' => 'th',
-              'bg' => '#303030', 'color' => '#ffffff', 'border' => '#555555', 'enabled' => 1, 'memo' => '表の見出しセル'),
-        array('core' => '', 'selector' => 'td',
-              'bg' => 'transparent', 'color' => '#ffffff', 'border' => '#555555', 'enabled' => 1, 'memo' => '表のセル'),
-        array('core' => '', 'selector' => 'input, textarea, select',
-              'bg' => '#303030', 'color' => '#ffffff', 'border' => '#555555', 'enabled' => 1, 'memo' => '入力欄'),
-        array('core' => '', 'selector' => 'pre, code',
-              'bg' => '#303030', 'color' => '#ffffff', 'border' => '#555555', 'enabled' => 1, 'memo' => 'コード'),
-        array('core' => '', 'selector' => '::selection',
-              'bg' => '#f5c542', 'color' => '#393939', 'border' => '', 'enabled' => 1, 'memo' => '選択範囲'),
     );
 }
 
@@ -90,7 +69,7 @@ function csw_default_excludes() {
 function csw_defaults() {
     return array(
         'ver' => 2,
-        'rules' => array_merge(csw_core_rules(), csw_starter_rules()),
+        'rules' => csw_initial_rules(),
         // Exceptions, one per line. "// comment" after a selector is a memo.
         'exclude_selectors' => csw_default_excludes(),
         'img_dim' => 1, // Dim images slightly
@@ -111,6 +90,7 @@ function csw_rules_decode($rules) {
     if (!is_array($rules)) return array();
     foreach ($rules as &$r) {
         if (isset($r['memo'])) $r['memo'] = csw_txt_decode($r['memo']);
+        unset($r['core']); // v1.1 core flags are meaningless now; drop them
     }
     unset($r);
     return $rules;
@@ -125,20 +105,18 @@ function csw_rules_encode($rules) {
     return $rules;
 }
 
-/* Convert a v1.0 settings array (base colors) into the v1.1 rule structure. */
+/* Convert a v1.0 settings array (base colors) into the rule structure. */
 function csw_upgrade_v1($saved) {
     $out = csw_defaults();
-    $core = csw_core_rules();
-    $core[0]['bg'] = !empty($saved['dark_bg']) ? $saved['dark_bg'] : $core[0]['bg'];
-    $core[1]['color'] = !empty($saved['dark_text']) ? $saved['dark_text'] : $core[1]['color'];
-    $core[2]['color'] = !empty($saved['dark_link']) ? $saved['dark_link'] : $core[2]['color'];
-    $core[3]['color'] = !empty($saved['dark_link_hover']) ? $saved['dark_link_hover'] : $core[3]['color'];
-    $rules = $core;
+    $rules = csw_initial_rules();
+    if (!empty($saved['dark_bg'])) $rules[0]['bg'] = $saved['dark_bg'];
+    if (!empty($saved['dark_text'])) $rules[0]['color'] = $saved['dark_text'];
+    if (!empty($saved['dark_link'])) $rules[1]['color'] = $saved['dark_link'];
+    if (!empty($saved['dark_link_hover'])) $rules[2]['color'] = $saved['dark_link_hover'];
     if (!empty($saved['rules']) && is_array($saved['rules'])) {
         foreach ($saved['rules'] as $r) {
             if (!is_array($r)) continue;
             $rules[] = array(
-                'core' => '',
                 'selector' => isset($r['selector']) ? $r['selector'] : '',
                 'bg' => isset($r['bg']) ? $r['bg'] : '',
                 'color' => isset($r['color']) ? $r['color'] : '',
@@ -147,8 +125,6 @@ function csw_upgrade_v1($saved) {
                 'memo' => '',
             );
         }
-    } else {
-        $rules = array_merge($rules, csw_starter_rules());
     }
     $out['rules'] = $rules;
     if (isset($saved['exclude_selectors'])) $out['exclude_selectors'] = (string) $saved['exclude_selectors'];
@@ -231,24 +207,16 @@ function csw_parse_excludes($text) {
 
 /*
  * Sanitize raw rule rows. Memos are returned encoded.
- * Missing core rules are restored from $core_source (decoded rules),
- * so a core rule can never be deleted through a submitted form.
+ * Every row is an ordinary rule: nothing is restored or protected,
+ * so any rule (including the initial ones) can be deleted.
  */
-function csw_sanitize_rules($raw_rows, $core_source) {
+function csw_sanitize_rules($raw_rows) {
     $rows = array();
-    $seen_core = array();
     if (is_array($raw_rows)) {
         foreach ($raw_rows as $r) {
             if (!is_array($r)) continue;
-            $core = isset($r['core']) ? sanitize_key($r['core']) : '';
-            if (!in_array($core, array('', 'bg', 'text', 'link', 'link_hover'), true)) $core = '';
-            if ($core !== '') {
-                if (isset($seen_core[$core])) continue; // first one wins
-                $seen_core[$core] = true;
-            }
             $sel = isset($r['selector']) ? csw_sanitize_selector($r['selector']) : '';
             $row = array(
-                'core' => $core,
                 'selector' => $sel,
                 'bg' => isset($r['bg']) ? csw_css_color($r['bg']) : '',
                 'color' => isset($r['color']) ? csw_css_color($r['color']) : '',
@@ -256,21 +224,11 @@ function csw_sanitize_rules($raw_rows, $core_source) {
                 'enabled' => !empty($r['enabled']) ? 1 : 0,
                 'memo' => csw_txt_encode(isset($r['memo']) ? sanitize_text_field($r['memo']) : ''),
             );
-            if ($core === '' && $sel === '' && $row['bg'] === '' && $row['color'] === '' && $row['border'] === '') continue;
+            if ($sel === '' && $row['bg'] === '' && $row['color'] === '' && $row['border'] === '') continue;
             $rows[] = $row;
         }
     }
-    $missing = array();
-    foreach (csw_core_rules() as $cr) {
-        if (!isset($seen_core[$cr['core']])) {
-            foreach ((array) $core_source as $sr) {
-                if (isset($sr['core']) && $sr['core'] === $cr['core']) { $cr = $sr; break; }
-            }
-            $cr['memo'] = csw_txt_encode(isset($cr['memo']) ? $cr['memo'] : '');
-            $missing[] = $cr;
-        }
-    }
-    return array_merge($missing, $rows);
+    return $rows;
 }
 
 add_action('admin_init', function () {
@@ -285,8 +243,7 @@ function csw_sanitize($input) {
     $out = array_merge(csw_defaults(), $current); // merge over saved values (per-tab partial forms)
 
     if (isset($input['rules_present'])) {
-        $decoded_current = csw_settings();
-        $out['rules'] = csw_sanitize_rules(isset($input['rules']) ? $input['rules'] : array(), $decoded_current['rules']);
+        $out['rules'] = csw_sanitize_rules(isset($input['rules']) ? $input['rules'] : array());
     }
     if (isset($input['exclude_selectors'])) {
         $out['exclude_selectors'] = sanitize_textarea_field($input['exclude_selectors']);
@@ -436,7 +393,7 @@ function csw_presets_import_data($data) {
         $out[] = array(
             'id' => uniqid('p', true),
             'title' => csw_txt_encode($title),
-            'rules' => csw_sanitize_rules($decoded_rules, csw_core_rules()),
+            'rules' => csw_sanitize_rules($decoded_rules),
             'exclude_selectors' => isset($it['exclude_selectors']) ? sanitize_textarea_field($it['exclude_selectors']) : '',
             'created' => time(),
         );
@@ -456,7 +413,9 @@ function csw_admin_styles() {
     .csw-del { color: #b32d2e !important; border-color: #b32d2e !important; }
     .csw-del:hover, .csw-del:focus { background: #b32d2e !important; color: #fff !important; border-color: #b32d2e !important; }
     input[type="color"].csw-empty { opacity: .35; filter: grayscale(100%); outline: 1px dashed #888; outline-offset: 1px; }
-    .csw-core-badge { display: inline-block; padding: 2px 8px; border: 1px solid #2271b1; color: #2271b1; border-radius: 9999px; font-size: 11px; }
+    .csw-rules-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .csw-rules-scroll table { min-width: 1150px; }
+    .csw-move { padding: 0 6px !important; line-height: 1.6 !important; }
     #csw-custom-box { border: 1px solid #c3c4c7; border-radius: 4px; padding: 12px 16px; max-width: 560px; background: #fff; }
     #csw-custom-box p { margin: 8px 0; }
     </style>
@@ -525,7 +484,8 @@ function csw_settings_page() {
             <?php settings_fields('csw_settings_group'); ?>
             <input type="hidden" name="<?php echo CSW_OPTION; ?>[rules_present]" value="1">
             <h2><?php echo esc_html(__('Rules', 'color-switch')); ?></h2>
-            <p class="description"><?php echo esc_html(__('Each rule applies background, text and border colors to its selector while the dark scheme is active, with priority over the theme. An empty color field is not applied. Selectors can be comma-separated. Rules marked "Core" (background, text, link, link hover) cannot be deleted.', 'color-switch')); ?></p>
+            <p class="description"><?php echo esc_html(__('Each rule takes precedence over the theme color settings. An item with an empty color code is not applied. Multiple selectors can be given as a comma-separated list.', 'color-switch')); ?></p>
+            <div class="csw-rules-scroll">
             <table class="widefat striped" id="csw-rules-table">
                 <thead>
                     <tr>
@@ -535,7 +495,7 @@ function csw_settings_page() {
                         <th style="width:180px"><?php echo esc_html(__('Text color', 'color-switch')); ?></th>
                         <th style="width:180px"><?php echo esc_html(__('Border color', 'color-switch')); ?></th>
                         <th style="width:180px"><?php echo esc_html(__('Memo', 'color-switch')); ?></th>
-                        <th style="width:76px"></th>
+                        <th style="width:170px"></th>
                     </tr>
                 </thead>
                 <tbody id="csw-rules-body">
@@ -548,21 +508,19 @@ function csw_settings_page() {
                         <td><?php csw_rule_color(CSW_OPTION . '[rules][' . $i . '][border]', $r['border']); ?></td>
                         <td><input type="text" name="<?php echo CSW_OPTION; ?>[rules][<?php echo $i; ?>][memo]" value="<?php echo esc_attr(isset($r['memo']) ? $r['memo'] : ''); ?>" class="large-text" placeholder="<?php echo esc_attr(__('Memo', 'color-switch')); ?>"></td>
                         <td>
-                            <?php if (!empty($r['core'])): ?>
-                            <input type="hidden" name="<?php echo CSW_OPTION; ?>[rules][<?php echo $i; ?>][core]" value="<?php echo esc_attr($r['core']); ?>">
-                            <span class="csw-core-badge"><?php echo esc_html(__('Core', 'color-switch')); ?></span>
-                            <?php else: ?>
+                            <button type="button" class="button csw-move csw-rule-up" title="<?php echo esc_attr(__('Move up', 'color-switch')); ?>" aria-label="<?php echo esc_attr(__('Move up', 'color-switch')); ?>">↑</button>
+                            <button type="button" class="button csw-move csw-rule-down" title="<?php echo esc_attr(__('Move down', 'color-switch')); ?>" aria-label="<?php echo esc_attr(__('Move down', 'color-switch')); ?>">↓</button>
                             <button type="button" class="button csw-rule-del csw-del"><?php echo esc_html(__('Delete', 'color-switch')); ?></button>
-                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            </div>
             <p><button type="button" class="button" id="csw-rule-add"><?php echo esc_html(__('Add row', 'color-switch')); ?></button></p>
 
             <h2><?php echo esc_html(__('Exceptions', 'color-switch')); ?></h2>
-            <p class="description"><?php echo esc_html(__('One selector per line. Links under these elements, and pre / code rules targeting them, keep their original colors (for SNS buttons, product links, or code blocks with their own theme). You can add a memo after "//", e.g. "code //Code block". Lines starting with // are comments.', 'color-switch')); ?></p>
+            <p class="description"><?php echo esc_html(__('Write one per line. You can add a memo after "//" (e.g. code //Code block).', 'color-switch')); ?></p>
             <textarea name="<?php echo CSW_OPTION; ?>[exclude_selectors]" rows="5" class="large-text code" placeholder=".sns-share-buttons"><?php echo esc_textarea($s['exclude_selectors']); ?></textarea>
 
             <h2><?php echo esc_html(__('Images', 'color-switch')); ?></h2>
@@ -579,7 +537,18 @@ function csw_settings_page() {
             function bindDel(btn) {
                 btn.addEventListener('click', function () { btn.closest('tr').remove(); });
             }
+            function bindMove(row) {
+                row.querySelector('.csw-rule-up').addEventListener('click', function () {
+                    var prev = row.previousElementSibling;
+                    if (prev) body.insertBefore(row, prev);
+                });
+                row.querySelector('.csw-rule-down').addEventListener('click', function () {
+                    var next = row.nextElementSibling;
+                    if (next) body.insertBefore(next, row);
+                });
+            }
             document.querySelectorAll('.csw-rule-del').forEach(bindDel);
+            document.querySelectorAll('.csw-rule-row').forEach(bindMove);
             document.getElementById('csw-rule-add').addEventListener('click', function () {
                 var i = Date.now();
                 var tr = document.createElement('tr');
@@ -593,9 +562,12 @@ function csw_settings_page() {
                     '<td><input type="text" name="' + name + '[selector]" value="" class="large-text" placeholder=".site-header, #header"></td>' +
                     colorCell('bg') + colorCell('color') + colorCell('border') +
                     '<td><input type="text" name="' + name + '[memo]" value="" class="large-text" placeholder="<?php echo esc_js(__('Memo', 'color-switch')); ?>"></td>' +
-                    '<td><button type="button" class="button csw-rule-del csw-del"><?php echo esc_js(__('Delete', 'color-switch')); ?></button></td>';
+                    '<td><button type="button" class="button csw-move csw-rule-up" title="<?php echo esc_js(__('Move up', 'color-switch')); ?>">↑</button> ' +
+                    '<button type="button" class="button csw-move csw-rule-down" title="<?php echo esc_js(__('Move down', 'color-switch')); ?>">↓</button> ' +
+                    '<button type="button" class="button csw-rule-del csw-del"><?php echo esc_js(__('Delete', 'color-switch')); ?></button></td>';
                 body.appendChild(tr);
                 bindDel(tr.querySelector('.csw-rule-del'));
+                bindMove(tr);
                 window.cswBindColors(tr);
             });
         })();
@@ -841,13 +813,22 @@ function csw_position_css($s) {
     }
 }
 
-/* Build a :not() chain from the exception list (e.g. array('.a') -> ':not(.a a)') */
-function csw_not_chain($excludes, $inner) {
-    $out = '';
+/*
+ * Exceptions outrank every rule. A rule selector part is rewritten so it
+ * never matches an exception element itself (:not(<ex>)) nor anything
+ * inside one (:not(<ex> *)). The suffix is inserted before a trailing
+ * pseudo-element, where appending it would be invalid.
+ */
+function csw_apply_exclusions($part, $excludes) {
+    if (!$excludes) return $part;
+    $suffix = '';
     foreach ($excludes as $ex) {
-        $out .= ':not(' . $ex . ' ' . $inner . ')';
+        $suffix .= ':not(' . $ex . '):not(' . $ex . ' *)';
     }
-    return $out;
+    if (preg_match('/^(.*?)(::[a-zA-Z][a-zA-Z-]*(\([^()]*\))?)$/', $part, $m)) {
+        return $m[1] . $suffix . $m[2];
+    }
+    return $part . $suffix;
 }
 
 // The FOUC guard script comes first in <head>
@@ -871,7 +852,6 @@ add_action('wp_head', function () {
 add_action('wp_head', function () {
     $s = csw_settings();
     $excludes = csw_parse_excludes($s['exclude_selectors']);
-    $a_not = csw_not_chain($excludes, 'a');
     ?>
     <style id="color-switch-css">
     :root {
@@ -879,7 +859,8 @@ add_action('wp_head', function () {
         --csw-btn-color: <?php echo esc_html($s['button_color']); ?>;
     }
     html.dark-mode { color-scheme: dark; }
-    <?php foreach ($s['rules'] as $r): ?>
+    <?php // List order is priority order: emit in reverse so the top rule is printed last and wins ties (same specificity, both !important). ?>
+    <?php foreach (array_reverse($s['rules']) as $r): ?>
     <?php
         if (empty($r['enabled']) || $r['selector'] === '') continue;
         $decls = array();
@@ -887,23 +868,11 @@ add_action('wp_head', function () {
         if ($r['color'] !== '') $decls[] = 'color: ' . $r['color'] . ' !important;';
         if ($r['border'] !== '') $decls[] = 'border-color: ' . $r['border'] . ' !important;';
         if (!$decls) continue;
-        $is_link = isset($r['core']) && ($r['core'] === 'link' || $r['core'] === 'link_hover');
         $parts = array();
         foreach (explode(',', $r['selector']) as $part) {
             $part = trim($part);
             if ($part === '') continue;
-            if ($is_link) {
-                // Links under exception elements keep their original color
-                $part = preg_replace('/^a(?=[\s\.\#\:\[]|$)/', 'a' . $a_not, $part, 1);
-            }
-            if (preg_match('/^(pre|code)(?=[\s\.\#\:\[]|$)/', $part, $mm)) {
-                // pre / code rules do not touch exception elements or their contents
-                $chain = '';
-                foreach ($excludes as $ex) {
-                    $chain .= ':not(' . $ex . '):not(' . $ex . ' ' . $mm[1] . ')';
-                }
-                $part = $mm[1] . $chain . substr($part, strlen($mm[1]));
-            }
+            $part = csw_apply_exclusions($part, $excludes);
             if (strpos($part, 'html.dark-mode') !== 0) $part = 'html.dark-mode ' . $part;
             $parts[] = str_replace('</', '<\/', $part);
         }

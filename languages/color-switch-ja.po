@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: ColorSwitch 1.1.0\n"
+"Project-Id-Version: ColorSwitch 1.2.0\n"
 "Language: ja\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -57,9 +57,6 @@ msgstr "ボタンのアイコン色"
 msgid "Color scheme toggle"
 msgstr "カラースキーム切替"
 
-msgid "Core"
-msgstr "コア"
-
 msgid "Custom"
 msgstr "カスタム"
 
@@ -87,8 +84,8 @@ msgstr "表示しない（[color_switch] 配置時のみ）"
 msgid "Downloads all saved presets as one JSON file."
 msgstr "保存済みプリセットを1つのJSONファイルでダウンロードします。"
 
-msgid "Each rule applies background, text and border colors to its selector while the dark scheme is active, with priority over the theme. An empty color field is not applied. Selectors can be comma-separated. Rules marked \"Core\" (background, text, link, link hover) cannot be deleted."
-msgstr "各ルールは、ダーク配色の有効時にセレクタへ背景色・文字色・枠線色をテーマより優先して適用します。色欄が空の項目は適用されません。セレクタはカンマ区切りで複数指定できます。「コア」と付いたルール（背景色・文字色・リンク・リンクホバー）は削除できません。"
+msgid "Each rule takes precedence over the theme color settings. An item with an empty color code is not applied. Multiple selectors can be given as a comma-separated list."
+msgstr "各ルールはテーマの色指定より優先されます。色コードが空欄の項目は適用されません。セレクタはカンマ区切りで複数指定できます。"
 
 msgid "Exceptions"
 msgstr "例外指定"
@@ -129,6 +126,12 @@ msgstr "ライト"
 msgid "Memo"
 msgstr "メモ"
 
+msgid "Move down"
+msgstr "下へ"
+
+msgid "Move up"
+msgstr "上へ"
+
 msgid "No presets yet."
 msgstr "プリセットはまだありません。"
 
@@ -137,9 +140,6 @@ msgstr "有効"
 
 msgid "Once a visitor switches the scheme, their choice is stored in the browser and takes precedence."
 msgstr "訪問者が一度切り替えた後は、その選択がブラウザに保存されて優先されます。"
-
-msgid "One selector per line. Links under these elements, and pre / code rules targeting them, keep their original colors (for SNS buttons, product links, or code blocks with their own theme). You can add a memo after \"//\", e.g. \"code //Code block\". Lines starting with // are comments."
-msgstr "1行に1セレクタ。ここに書いた要素配下のリンクと、それらを対象とする pre / code ルールは元の色のままになります（SNSボタンや商品リンク、独自テーマを持つコードブロックなど）。「//」の後にメモを書けます（例: code //コードブロック）。// で始まる行はコメントです。"
 
 msgid "Position"
 msgstr "表示位置"
@@ -215,6 +215,9 @@ msgstr "無題のプリセット"
 
 msgid "Used only when the icon type is \"Custom\"."
 msgstr "アイコン種別が「カスタム」のときだけ使われます。"
+
+msgid "Write one per line. You can add a memo after \"//\" (e.g. code //Code block)."
+msgstr "1行に1つ記載してください。「//」のあとにメモを書けます（例: code //コードブロック）"
 
 msgid "You can save up to %d presets. (%d / %d)"
 msgstr "プリセットは最大 %d 件まで保存できます。（%d / %d）"
