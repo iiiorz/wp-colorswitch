@@ -859,7 +859,7 @@ function csw_settings_page() {
                             <option value="switched" <?php selected($s['default_mode'], 'switched'); ?>><?php echo esc_html(__('Switched', 'color-switch')); ?></option>
                         </select>
                         <input type="hidden" name="<?php echo CSW_OPTION; ?>[os_dark_auto_present]" value="1">
-                        <label style="margin-left:16px"><input type="checkbox" name="<?php echo CSW_OPTION; ?>[os_dark_auto]" value="1" <?php checked($s['os_dark_auto'], 1); ?>> <?php echo esc_html(__('Automatically switch when the OS is in dark mode', 'color-switch')); ?></label>
+                        <label style="margin-left:16px"><input type="checkbox" name="<?php echo CSW_OPTION; ?>[os_dark_auto]" value="1" <?php checked($s['os_dark_auto'], 1); ?>> <?php echo esc_html(__('Auto-switch when the OS is in dark mode', 'color-switch')); ?></label>
                         <p class="description"><?php echo esc_html(__('Once a visitor switches the scheme, their choice is stored in the browser and takes precedence.', 'color-switch')); ?></p>
                     </td>
                 </tr>
