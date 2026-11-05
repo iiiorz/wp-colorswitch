@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ColorSwitch
  * Description: A theme-independent color scheme (dark mode) toggle plugin. Everything is a rule: selector × colors, with exceptions, memos and user presets.
- * Version: 1.2.0
+ * Version: 1.0.0
  * Author: iiiiorz
  * License: GPL-2.0-or-later
  * Text Domain: color-switch
@@ -17,10 +17,20 @@
  * - Free-text values (custom icons, rule memos, preset titles) are stored
  *   base64-encoded so that 4-byte characters (emoji) cannot silently fail to
  *   save on utf8mb3 databases.
- * - v1.1: base colors were folded into the rule list.
- * - v1.2: no special "core" rules — every rule can be edited, reordered or
- *   deleted. The list order is the priority order (top wins on ties), and
- *   exceptions outrank every rule.
+ * - No special "core" rules: every rule can be edited, reordered or
+ *   deleted. The list order is the priority order (top wins on ties),
+ *   and exceptions outrank every rule.
+ * - Button styling: font size/weight/family, size, shape, per-state
+ *   background/text colors with transparency, numeric position
+ *   offsets, and a live preview. Custom icons accept Font Awesome
+ *   class names. "Initial display" is Normal/Switched plus an
+ *   optional "follow the OS dark mode" checkbox.
+ * - Preset apply verifies the write and lands on the Rules tab so the
+ *   result is visible. Note: the registered sanitize callback also
+ *   runs on update_option() inside admin requests, so it must accept
+ *   programmatically stored full settings arrays, not just form
+ *   posts — otherwise a preset apply would replace the exceptions
+ *   but silently keep the old rules.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -76,12 +86,43 @@ function csw_defaults() {
         // Button
         'button_bg' => '#393939',
         'button_color' => '#ffffff',
-        'icon_preset' => 'emoji_auto', // emoji_auto|emoji_moon|unicode|text|custom
+        'button_bg_transparency' => 0, // 0 = opaque, 100 = fully transparent
+        'button_color_transparency' => 0,
+        // Optional separate colors for the switched state ('' = same as normal)
+        'button_colors_separate' => 0,
+        'button_bg_switched' => '',
+        'button_color_switched' => '',
+        'button_bg_transparency_switched' => 0,
+        'button_color_transparency_switched' => 0,
+        'button_font_size' => 22,      // px
+        'button_font_weight' => '',    // '' = theme default, or 300..900 / normal / bold
+        'button_font_family' => '',    // '' = theme default
+        'button_size' => 48,           // px (width and height)
+        'button_shape' => 'circle',    // circle|rounded|square
+        'button_radius' => 12,         // px, used when shape = rounded
+        'icon_preset' => 'emoji_auto', // emoji_auto|emoji_moon|unicode|custom
         'icon_custom_light' => '🌙',
         'icon_custom_dark' => '☀️',
         'position' => 'bottom_right', // bottom_right|bottom_left|top_right|top_left|shortcode
-        'default_mode' => 'auto',     // auto|light|dark
+        'position_offset_x' => 16,    // px from the left/right edge (floating positions)
+        'position_offset_y' => 16,    // px from the top/bottom edge (floating positions)
+        'default_mode' => 'normal',   // normal|switched
+        'os_dark_auto' => 0,          // 1 = auto-switch when the OS is in dark mode
     );
+}
+
+/* Map a legacy default_mode (auto|light|dark, from early development
+   builds) onto the current pair (default_mode normal|switched +
+   os_dark_auto). Returns null when the saved value is already a
+   current value or absent. */
+function csw_legacy_default_mode($saved) {
+    if (!isset($saved['default_mode'])) return null;
+    switch ($saved['default_mode']) {
+        case 'auto':  return array('default_mode' => 'normal', 'os_dark_auto' => 1);
+        case 'light': return array('default_mode' => 'normal', 'os_dark_auto' => 0);
+        case 'dark':  return array('default_mode' => 'switched', 'os_dark_auto' => 0);
+    }
+    return null;
 }
 
 /* ---------------- Settings access ---------------- */
@@ -90,7 +131,7 @@ function csw_rules_decode($rules) {
     if (!is_array($rules)) return array();
     foreach ($rules as &$r) {
         if (isset($r['memo'])) $r['memo'] = csw_txt_decode($r['memo']);
-        unset($r['core']); // v1.1 core flags are meaningless now; drop them
+        unset($r['core']); // legacy core flags are meaningless now; drop them
     }
     unset($r);
     return $rules;
@@ -105,7 +146,8 @@ function csw_rules_encode($rules) {
     return $rules;
 }
 
-/* Convert a v1.0 settings array (base colors) into the rule structure. */
+/* Convert a legacy settings array (base colors, from early
+   development builds) into the rule structure. */
 function csw_upgrade_v1($saved) {
     $out = csw_defaults();
     $rules = csw_initial_rules();
@@ -135,6 +177,9 @@ function csw_upgrade_v1($saved) {
     foreach (array('icon_custom_light', 'icon_custom_dark') as $k) {
         if (isset($saved[$k])) $out[$k] = csw_txt_decode($saved[$k]);
     }
+    $legacy = csw_legacy_default_mode($out);
+    if ($legacy !== null) { $out['default_mode'] = $legacy['default_mode']; $out['os_dark_auto'] = $legacy['os_dark_auto']; }
+    if ($out['icon_preset'] === 'text') $out['icon_preset'] = 'emoji_auto';
     $out['ver'] = 2;
     return $out;
 }
@@ -146,7 +191,13 @@ function csw_settings() {
         $s = csw_upgrade_v1($saved); // already in decoded form
         return $s;
     }
+    $legacy = csw_legacy_default_mode($saved);
+    if ($legacy !== null && !isset($saved['os_dark_auto'])) {
+        $saved['default_mode'] = $legacy['default_mode'];
+        $saved['os_dark_auto'] = $legacy['os_dark_auto'];
+    }
     $s = array_merge(csw_defaults(), $saved);
+    if ($s['icon_preset'] === 'text') $s['icon_preset'] = 'emoji_auto'; // legacy 'text' icon maps to emoji_auto
     $s['icon_custom_light'] = csw_txt_decode($s['icon_custom_light']);
     $s['icon_custom_dark'] = csw_txt_decode($s['icon_custom_dark']);
     $s['rules'] = csw_rules_decode($s['rules']);
@@ -222,7 +273,10 @@ function csw_sanitize_rules($raw_rows) {
                 'color' => isset($r['color']) ? csw_css_color($r['color']) : '',
                 'border' => isset($r['border']) ? csw_css_color($r['border']) : '',
                 'enabled' => !empty($r['enabled']) ? 1 : 0,
-                'memo' => csw_txt_encode(isset($r['memo']) ? sanitize_text_field($r['memo']) : ''),
+                // Decode first so an already-encoded memo (when the stored
+                // settings pass through this sanitizer again, see below)
+                // is not wrapped in another encoding layer.
+                'memo' => csw_txt_encode(csw_txt_decode(isset($r['memo']) ? sanitize_text_field($r['memo']) : '')),
             );
             if ($sel === '' && $row['bg'] === '' && $row['color'] === '' && $row['border'] === '') continue;
             $rows[] = $row;
@@ -242,7 +296,14 @@ function csw_sanitize($input) {
     $current = (isset($saved['dark_bg']) && !isset($saved['ver'])) ? array() : $saved;
     $out = array_merge(csw_defaults(), $current); // merge over saved values (per-tab partial forms)
 
-    if (isset($input['rules_present'])) {
+    // The Rules tab sends rules_present + rules. A programmatic store
+    // (csw_store_settings, e.g. preset apply) sends the full settings
+    // array including 'rules' but no rules_present marker — and because
+    // this sanitizer also runs as the sanitize_option filter on every
+    // update_option() in admin requests, it must accept that form too.
+    // (Dropping them here would break preset apply: the exceptions
+    // would be replaced but the rules never would.)
+    if (isset($input['rules_present']) || isset($input['rules'])) {
         $out['rules'] = csw_sanitize_rules(isset($input['rules']) ? $input['rules'] : array());
     }
     if (isset($input['exclude_selectors'])) {
@@ -251,13 +312,58 @@ function csw_sanitize($input) {
     if (isset($input['img_dim_present'])) {
         $out['img_dim'] = !empty($input['img_dim']) ? 1 : 0;
     }
-    foreach (array('button_bg', 'button_color') as $k) {
-        if (isset($input[$k])) {
-            $c = sanitize_hex_color($input[$k]);
-            if ($c) $out[$k] = $c;
-        }
+    if (isset($input['button_bg'])) {
+        $c = csw_css_color($input['button_bg']);
+        if ($c !== '' && ($c[0] === '#' || $c === 'transparent')) $out['button_bg'] = $c;
     }
-    if (isset($input['icon_preset']) && in_array($input['icon_preset'], array('emoji_auto', 'emoji_moon', 'unicode', 'text', 'custom'), true)) {
+    if (isset($input['button_color'])) {
+        $c = sanitize_hex_color($input['button_color']);
+        if ($c) $out['button_color'] = $c;
+    }
+    if (isset($input['button_bg_transparency'])) {
+        $out['button_bg_transparency'] = max(0, min(100, intval($input['button_bg_transparency'])));
+    }
+    if (isset($input['button_color_transparency'])) {
+        $out['button_color_transparency'] = max(0, min(100, intval($input['button_color_transparency'])));
+    }
+    if (isset($input['button_colors_separate_present'])) {
+        $out['button_colors_separate'] = !empty($input['button_colors_separate']) ? 1 : 0;
+    }
+    // Switched-state colors may be cleared back to '' (= same as normal),
+    // so unlike the normal colors they are stored even when empty.
+    if (isset($input['button_bg_switched'])) {
+        $out['button_bg_switched'] = csw_css_color($input['button_bg_switched']);
+    }
+    if (isset($input['button_color_switched'])) {
+        $c = sanitize_hex_color($input['button_color_switched']);
+        $out['button_color_switched'] = $c ? $c : '';
+    }
+    if (isset($input['button_bg_transparency_switched'])) {
+        $out['button_bg_transparency_switched'] = max(0, min(100, intval($input['button_bg_transparency_switched'])));
+    }
+    if (isset($input['button_color_transparency_switched'])) {
+        $out['button_color_transparency_switched'] = max(0, min(100, intval($input['button_color_transparency_switched'])));
+    }
+    if (isset($input['button_font_size'])) {
+        $out['button_font_size'] = max(8, min(64, intval($input['button_font_size'])));
+    }
+    if (isset($input['button_font_weight']) && in_array((string) $input['button_font_weight'], array('', '300', '400', '500', '600', '700', '800', '900', 'normal', 'bold'), true)) {
+        $out['button_font_weight'] = (string) $input['button_font_weight'];
+    }
+    if (isset($input['button_font_family'])) {
+        $ff = sanitize_text_field($input['button_font_family']);
+        $out['button_font_family'] = str_replace(array('{', '}', '<', '>', ';'), '', $ff);
+    }
+    if (isset($input['button_size'])) {
+        $out['button_size'] = max(24, min(120, intval($input['button_size'])));
+    }
+    if (isset($input['button_shape']) && in_array($input['button_shape'], array('circle', 'rounded', 'square'), true)) {
+        $out['button_shape'] = $input['button_shape'];
+    }
+    if (isset($input['button_radius'])) {
+        $out['button_radius'] = max(0, min(60, intval($input['button_radius'])));
+    }
+    if (isset($input['icon_preset']) && in_array($input['icon_preset'], array('emoji_auto', 'emoji_moon', 'unicode', 'custom'), true)) {
         $out['icon_preset'] = $input['icon_preset'];
     }
     foreach (array('icon_custom_light', 'icon_custom_dark') as $k) {
@@ -269,8 +375,25 @@ function csw_sanitize($input) {
     if (isset($input['position']) && in_array($input['position'], array('bottom_right', 'bottom_left', 'top_right', 'top_left', 'shortcode'), true)) {
         $out['position'] = $input['position'];
     }
-    if (isset($input['default_mode']) && in_array($input['default_mode'], array('auto', 'light', 'dark'), true)) {
-        $out['default_mode'] = $input['default_mode'];
+    if (isset($input['position_offset_x'])) {
+        $out['position_offset_x'] = max(0, min(200, intval($input['position_offset_x'])));
+    }
+    if (isset($input['position_offset_y'])) {
+        $out['position_offset_y'] = max(0, min(200, intval($input['position_offset_y'])));
+    }
+    if (isset($input['default_mode'])) {
+        if (in_array($input['default_mode'], array('normal', 'switched'), true)) {
+            $out['default_mode'] = $input['default_mode'];
+        } else {
+            $legacy = csw_legacy_default_mode(array('default_mode' => $input['default_mode']));
+            if ($legacy !== null) {
+                $out['default_mode'] = $legacy['default_mode'];
+                $out['os_dark_auto'] = $legacy['os_dark_auto'];
+            }
+        }
+    }
+    if (isset($input['os_dark_auto_present'])) {
+        $out['os_dark_auto'] = !empty($input['os_dark_auto']) ? 1 : 0;
     }
     $out['ver'] = 2;
     return $out;
@@ -323,16 +446,27 @@ function csw_preset_find($list, $id) {
     return -1;
 }
 
-/* Apply a preset to the current settings (rules + exceptions only). */
+/* Apply a preset to the current settings (rules + exceptions only).
+   Returns true on success, 'notfound' when no preset has that id, and
+   false when the write could not be verified. The stored option is read
+   back and compared, so a silent write failure is reported instead of
+   showing a false "applied" notice — and a verification failure is
+   reported as such, not misreported as "preset not found". */
 function csw_preset_apply($id) {
     $list = csw_presets_raw();
-    $i = csw_preset_find($list, $id);
-    if ($i < 0) return false;
+    $i = csw_preset_find($list, trim((string) $id));
+    if ($i < 0) return 'notfound';
     $s = csw_settings();
     $s['rules'] = csw_rules_decode($list[$i]['rules']);
     $s['exclude_selectors'] = isset($list[$i]['exclude_selectors']) ? $list[$i]['exclude_selectors'] : '';
     csw_store_settings($s);
-    return true;
+    $check = csw_settings();
+    if (count($check['rules']) !== count($s['rules'])) return false;
+    foreach ($s['rules'] as $j => $r) {
+        if (!isset($check['rules'][$j]) || (string) $check['rules'][$j]['selector'] !== (string) $r['selector']
+            || (int) $check['rules'][$j]['enabled'] !== (int) $r['enabled']) return false;
+    }
+    return (string) $check['exclude_selectors'] === (string) $s['exclude_selectors'];
 }
 
 function csw_preset_delete($id) {
@@ -452,7 +586,7 @@ function csw_color_field($name, $value, $default) {
     $picker = ($value !== '' && $value[0] === '#') ? $value : '#303030';
     ?>
     <span class="csw-color"><input type="color" value="<?php echo esc_attr($picker); ?>"> <input type="text" name="<?php echo esc_attr($name); ?>" value="<?php echo esc_attr($value); ?>" class="regular-text" style="width:110px"></span>
-    <span class="description"><?php echo esc_html(sprintf(__('Default: %s', 'color-switch'), $default)); ?></span>
+    <?php if ($default !== ''): ?><span class="description"><?php echo esc_html(sprintf(__('Default: %s', 'color-switch'), $default)); ?></span><?php endif; ?>
     <?php
 }
 
@@ -480,6 +614,9 @@ function csw_settings_page() {
         </nav>
 
         <?php if ($tab === 'rules'): ?>
+        <?php if (isset($_GET['csw_notice']) && sanitize_key($_GET['csw_notice']) === 'applied'): ?>
+        <div class="notice notice-success is-dismissible"><p><?php echo esc_html(__('Preset applied. The rules and exceptions were replaced.', 'color-switch')); ?></p></div>
+        <?php endif; ?>
         <form method="post" action="options.php">
             <?php settings_fields('csw_settings_group'); ?>
             <input type="hidden" name="<?php echo CSW_OPTION; ?>[rules_present]" value="1">
@@ -574,7 +711,7 @@ function csw_settings_page() {
         </script>
 
         <?php elseif ($tab === 'button'): ?>
-        <form method="post" action="options.php">
+        <form method="post" action="options.php" id="csw-button-form">
             <?php settings_fields('csw_settings_group'); ?>
             <table class="form-table">
                 <tr>
@@ -584,36 +721,116 @@ function csw_settings_page() {
                             <option value="emoji_auto" <?php selected($s['icon_preset'], 'emoji_auto'); ?>>🌙 / ☀️ <?php echo esc_html(__('Auto (emoji)', 'color-switch')); ?></option>
                             <option value="emoji_moon" <?php selected($s['icon_preset'], 'emoji_moon'); ?>>🌙 <?php echo esc_html(__('Fixed (emoji)', 'color-switch')); ?></option>
                             <option value="unicode" <?php selected($s['icon_preset'], 'unicode'); ?>>☾ / ☀ <?php echo esc_html(__('Auto (symbols)', 'color-switch')); ?></option>
-                            <option value="text" <?php selected($s['icon_preset'], 'text'); ?>><?php echo esc_html(__('Text', 'color-switch')); ?></option>
                             <option value="custom" <?php selected($s['icon_preset'], 'custom'); ?>><?php echo esc_html(__('Custom', 'color-switch')); ?></option>
                         </select>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php echo esc_html(__('Custom icon', 'color-switch')); ?></th>
+                    <th scope="row"><?php echo esc_html(__('Custom', 'color-switch')); ?></th>
                     <td>
                         <div id="csw-custom-box"<?php echo $s['icon_preset'] === 'custom' ? '' : ' style="display:none"'; ?>>
                             <p>
-                                <label><?php echo esc_html(__('Shown in light mode', 'color-switch')); ?><br>
-                                <input type="text" name="<?php echo CSW_OPTION; ?>[icon_custom_light]" value="<?php echo esc_attr($s['icon_custom_light']); ?>" class="regular-text" style="width:160px"></label><br>
-                                <span class="description"><?php echo esc_html(__('Appears on the button that switches to dark mode.', 'color-switch')); ?></span>
+                                <label><?php echo esc_html(__('Normal state', 'color-switch')); ?><br>
+                                <input type="text" name="<?php echo CSW_OPTION; ?>[icon_custom_light]" id="csw-icon-normal" value="<?php echo esc_attr($s['icon_custom_light']); ?>" class="regular-text" style="width:220px"></label>
                             </p>
                             <p>
-                                <label><?php echo esc_html(__('Shown in dark mode', 'color-switch')); ?><br>
-                                <input type="text" name="<?php echo CSW_OPTION; ?>[icon_custom_dark]" value="<?php echo esc_attr($s['icon_custom_dark']); ?>" class="regular-text" style="width:160px"></label><br>
-                                <span class="description"><?php echo esc_html(__('Appears on the button that switches to light mode.', 'color-switch')); ?></span>
+                                <label><?php echo esc_html(__('Switched state', 'color-switch')); ?><br>
+                                <input type="text" name="<?php echo CSW_OPTION; ?>[icon_custom_dark]" id="csw-icon-switched" value="<?php echo esc_attr($s['icon_custom_dark']); ?>" class="regular-text" style="width:220px"></label>
                             </p>
+                            <p class="description"><?php echo esc_html(__('For Font Awesome, enter class names such as "fa-solid fa-moon". Font Awesome must be loaded on the site, and Font Awesome must also be specified in the Font family field.', 'color-switch')); ?></p>
                         </div>
                         <p class="description"><?php echo esc_html(__('Used only when the icon type is "Custom".', 'color-switch')); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php echo esc_html(__('Button background', 'color-switch')); ?></th>
-                    <td><?php csw_color_field(CSW_OPTION . '[button_bg]', $s['button_bg'], csw_defaults()['button_bg']); ?></td>
+                    <th scope="row"><?php echo esc_html(__('Background color', 'color-switch')); ?></th>
+                    <td>
+                        <?php csw_color_field(CSW_OPTION . '[button_bg]', $s['button_bg'], csw_defaults()['button_bg']); ?>
+                        <p style="margin-top:8px">
+                            <label><?php echo esc_html(__('Transparency', 'color-switch')); ?>
+                            <input type="number" name="<?php echo CSW_OPTION; ?>[button_bg_transparency]" id="csw-bg-transparency" value="<?php echo esc_attr($s['button_bg_transparency']); ?>" min="0" max="100" step="1" style="width:80px"> %</label>
+                            <span class="description"><?php echo esc_html(__('(0 = opaque, 100 = fully transparent)', 'color-switch')); ?></span>
+                        </p>
+                    </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php echo esc_html(__('Button icon color', 'color-switch')); ?></th>
-                    <td><?php csw_color_field(CSW_OPTION . '[button_color]', $s['button_color'], csw_defaults()['button_color']); ?></td>
+                    <th scope="row"><?php echo esc_html(__('Text color', 'color-switch')); ?></th>
+                    <td>
+                        <?php csw_color_field(CSW_OPTION . '[button_color]', $s['button_color'], csw_defaults()['button_color']); ?>
+                        <p style="margin-top:8px">
+                            <label><?php echo esc_html(__('Transparency', 'color-switch')); ?>
+                            <input type="number" name="<?php echo CSW_OPTION; ?>[button_color_transparency]" id="csw-color-transparency" value="<?php echo esc_attr($s['button_color_transparency']); ?>" min="0" max="100" step="1" style="width:80px"> %</label>
+                            <span class="description"><?php echo esc_html(__('(0 = opaque, 100 = fully transparent)', 'color-switch')); ?></span>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php echo esc_html(__('Switched state colors', 'color-switch')); ?></th>
+                    <td>
+                        <input type="hidden" name="<?php echo CSW_OPTION; ?>[button_colors_separate_present]" value="1">
+                        <label><input type="checkbox" name="<?php echo CSW_OPTION; ?>[button_colors_separate]" id="csw-colors-separate" value="1" <?php checked($s['button_colors_separate'], 1); ?>> <?php echo esc_html(__('Use separate colors for the switched state', 'color-switch')); ?></label>
+                        <div id="csw-switched-colors"<?php echo $s['button_colors_separate'] ? '' : ' style="opacity:.45"'; ?>>
+                            <p style="margin-top:10px">
+                                <label style="display:inline-block; min-width:64px"><?php echo esc_html(__('Background color', 'color-switch')); ?></label>
+                                <?php csw_color_field(CSW_OPTION . '[button_bg_switched]', $s['button_bg_switched'], ''); ?>
+                            </p>
+                            <p>
+                                <label style="display:inline-block; min-width:64px"><?php echo esc_html(__('Transparency', 'color-switch')); ?></label>
+                                <input type="number" name="<?php echo CSW_OPTION; ?>[button_bg_transparency_switched]" id="csw-bg-transparency-sw" value="<?php echo esc_attr($s['button_bg_transparency_switched']); ?>" min="0" max="100" step="1" style="width:80px"> %
+                            </p>
+                            <p>
+                                <label style="display:inline-block; min-width:64px"><?php echo esc_html(__('Text color', 'color-switch')); ?></label>
+                                <?php csw_color_field(CSW_OPTION . '[button_color_switched]', $s['button_color_switched'], ''); ?>
+                            </p>
+                            <p>
+                                <label style="display:inline-block; min-width:64px"><?php echo esc_html(__('Transparency', 'color-switch')); ?></label>
+                                <input type="number" name="<?php echo CSW_OPTION; ?>[button_color_transparency_switched]" id="csw-color-transparency-sw" value="<?php echo esc_attr($s['button_color_transparency_switched']); ?>" min="0" max="100" step="1" style="width:80px"> %
+                            </p>
+                            <p class="description"><?php echo esc_html(__('Leave a color empty to use the normal-state color.', 'color-switch')); ?></p>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php echo esc_html(__('Font size', 'color-switch')); ?></th>
+                    <td><input type="number" name="<?php echo CSW_OPTION; ?>[button_font_size]" id="csw-font-size" value="<?php echo esc_attr($s['button_font_size']); ?>" min="8" max="64" step="1" style="width:80px"> px</td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php echo esc_html(__('Font weight', 'color-switch')); ?></th>
+                    <td>
+                        <select name="<?php echo CSW_OPTION; ?>[button_font_weight]" id="csw-font-weight">
+                            <option value="" <?php selected($s['button_font_weight'], ''); ?>><?php echo esc_html(__('Theme default', 'color-switch')); ?></option>
+                            <?php foreach (array('300', '400', '500', '600', '700', '800', '900') as $w): ?>
+                            <option value="<?php echo $w; ?>" <?php selected($s['button_font_weight'], $w); ?>><?php echo $w; ?></option>
+                            <?php endforeach; ?>
+                            <option value="normal" <?php selected($s['button_font_weight'], 'normal'); ?>>normal</option>
+                            <option value="bold" <?php selected($s['button_font_weight'], 'bold'); ?>>bold</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php echo esc_html(__('Font family', 'color-switch')); ?></th>
+                    <td>
+                        <input type="text" name="<?php echo CSW_OPTION; ?>[button_font_family]" id="csw-font-family" value="<?php echo esc_attr($s['button_font_family']); ?>" class="regular-text" placeholder='"Font Awesome 6 Free", sans-serif'>
+                        <p class="description"><?php echo esc_html(__('Leave empty to use the theme font. A CSS font-family value, e.g. "Font Awesome 6 Free", sans-serif.', 'color-switch')); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php echo esc_html(__('Button size', 'color-switch')); ?></th>
+                    <td><input type="number" name="<?php echo CSW_OPTION; ?>[button_size]" id="csw-btn-size" value="<?php echo esc_attr($s['button_size']); ?>" min="24" max="120" step="1" style="width:80px"> px</td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php echo esc_html(__('Button shape', 'color-switch')); ?></th>
+                    <td>
+                        <select name="<?php echo CSW_OPTION; ?>[button_shape]" id="csw-btn-shape">
+                            <option value="circle" <?php selected($s['button_shape'], 'circle'); ?>><?php echo esc_html(__('Circle', 'color-switch')); ?></option>
+                            <option value="rounded" <?php selected($s['button_shape'], 'rounded'); ?>><?php echo esc_html(__('Rounded', 'color-switch')); ?></option>
+                            <option value="square" <?php selected($s['button_shape'], 'square'); ?>><?php echo esc_html(__('Square', 'color-switch')); ?></option>
+                        </select>
+                        <span id="csw-radius-wrap"<?php echo $s['button_shape'] === 'rounded' ? '' : ' style="display:none"'; ?>>
+                            <label><?php echo esc_html(__('Corner radius', 'color-switch')); ?>
+                            <input type="number" name="<?php echo CSW_OPTION; ?>[button_radius]" id="csw-btn-radius" value="<?php echo esc_attr($s['button_radius']); ?>" min="0" max="60" step="1" style="width:80px"> px</label>
+                        </span>
+                    </td>
                 </tr>
                 <tr>
                     <th scope="row"><?php echo esc_html(__('Position', 'color-switch')); ?></th>
@@ -625,17 +842,44 @@ function csw_settings_page() {
                             <option value="top_left" <?php selected($s['position'], 'top_left'); ?>><?php echo esc_html(__('Top left (floating)', 'color-switch')); ?></option>
                             <option value="shortcode" <?php selected($s['position'], 'shortcode'); ?>><?php echo esc_html(__('Do not show (only where [color_switch] is placed)', 'color-switch')); ?></option>
                         </select>
+                        <p style="margin-top:8px">
+                            <label><?php echo esc_html(__('Horizontal offset', 'color-switch')); ?>
+                            <input type="number" name="<?php echo CSW_OPTION; ?>[position_offset_x]" value="<?php echo esc_attr($s['position_offset_x']); ?>" min="0" max="200" step="1" style="width:80px"> px</label>
+                            <label style="margin-left:16px"><?php echo esc_html(__('Vertical offset', 'color-switch')); ?>
+                            <input type="number" name="<?php echo CSW_OPTION; ?>[position_offset_y]" value="<?php echo esc_attr($s['position_offset_y']); ?>" min="0" max="200" step="1" style="width:80px"> px</label>
+                        </p>
+                        <p class="description"><?php echo esc_html(__('Distance from the edge of the screen. Applies to the floating positions.', 'color-switch')); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php echo esc_html(__('Initial mode', 'color-switch')); ?></th>
+                    <th scope="row"><?php echo esc_html(__('Initial display', 'color-switch')); ?></th>
                     <td>
                         <select name="<?php echo CSW_OPTION; ?>[default_mode]">
-                            <option value="auto" <?php selected($s['default_mode'], 'auto'); ?>><?php echo esc_html(__('Auto (follow the OS setting)', 'color-switch')); ?></option>
-                            <option value="light" <?php selected($s['default_mode'], 'light'); ?>><?php echo esc_html(__('Light', 'color-switch')); ?></option>
-                            <option value="dark" <?php selected($s['default_mode'], 'dark'); ?>><?php echo esc_html(__('Dark', 'color-switch')); ?></option>
+                            <option value="normal" <?php selected($s['default_mode'], 'normal'); ?>><?php echo esc_html(__('Normal', 'color-switch')); ?></option>
+                            <option value="switched" <?php selected($s['default_mode'], 'switched'); ?>><?php echo esc_html(__('Switched', 'color-switch')); ?></option>
                         </select>
+                        <input type="hidden" name="<?php echo CSW_OPTION; ?>[os_dark_auto_present]" value="1">
+                        <label style="margin-left:16px"><input type="checkbox" name="<?php echo CSW_OPTION; ?>[os_dark_auto]" value="1" <?php checked($s['os_dark_auto'], 1); ?>> <?php echo esc_html(__('Automatically switch when the OS is in dark mode', 'color-switch')); ?></label>
                         <p class="description"><?php echo esc_html(__('Once a visitor switches the scheme, their choice is stored in the browser and takes precedence.', 'color-switch')); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php echo esc_html(__('Preview', 'color-switch')); ?></th>
+                    <td>
+                        <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap">
+                            <div>
+                                <div style="background:#f6f7f7; border:1px solid #dcdcde; border-radius:6px; padding:18px 22px; text-align:center">
+                                    <button type="button" class="csw-preview-btn" id="csw-preview-normal"></button>
+                                </div>
+                                <p class="description" style="text-align:center"><?php echo esc_html(__('Normal state', 'color-switch')); ?></p>
+                            </div>
+                            <div>
+                                <div style="background:#2c3338; border:1px solid #2c3338; border-radius:6px; padding:18px 22px; text-align:center">
+                                    <button type="button" class="csw-preview-btn" id="csw-preview-switched"></button>
+                                </div>
+                                <p class="description" style="text-align:center"><?php echo esc_html(__('Switched state', 'color-switch')); ?></p>
+                            </div>
+                        </div>
                     </td>
                 </tr>
             </table>
@@ -644,11 +888,78 @@ function csw_settings_page() {
         <?php csw_admin_color_script(); ?>
         <script>
         (function () {
+            var form = document.getElementById('csw-button-form');
             var sel = document.getElementById('csw-icon-preset');
             var box = document.getElementById('csw-custom-box');
-            sel.addEventListener('change', function () {
+            function isFaClass(v) { return /(^|\s)fa[srldb]?\s/.test(v) || /(^|\s)fa-[a-z0-9-]+/.test(v); }
+            function iconHtml(v) {
+                v = (v || '').trim();
+                if (isFaClass(v)) return '<i class="' + v.replace(/"/g, '') + '"></i>';
+                return document.createTextNode(v).textContent === v ? v.replace(/</g, '&lt;') : v;
+            }
+            function icons() {
+                switch (sel.value) {
+                    case 'emoji_moon': return ['🌙', '🌙'];
+                    case 'unicode': return ['☾', '☀'];
+                    case 'custom': return [document.getElementById('csw-icon-normal').value, document.getElementById('csw-icon-switched').value];
+                    default: return ['🌙', '☀️'];
+                }
+            }
+            function fieldText(name) {
+                var el = form.querySelector('[name$="[' + name + ']"]');
+                return el ? el.value : '';
+            }
+            function rgba(hex, transparency) {
+                if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return hex;
+                var r = parseInt(hex.substr(1, 2), 16), g = parseInt(hex.substr(3, 2), 16), b = parseInt(hex.substr(5, 2), 16);
+                var a = 1 - Math.max(0, Math.min(100, transparency || 0)) / 100;
+                return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+            }
+            function update() {
                 box.style.display = sel.value === 'custom' ? '' : 'none';
-            });
+                var sep = document.getElementById('csw-colors-separate');
+                var swBox = document.getElementById('csw-switched-colors');
+                var separate = !!(sep && sep.checked);
+                if (swBox) {
+                    swBox.style.opacity = separate ? '' : '.45';
+                    swBox.querySelectorAll('input').forEach(function (el) { el.disabled = !separate; });
+                }
+                var shape = document.getElementById('csw-btn-shape').value;
+                document.getElementById('csw-radius-wrap').style.display = shape === 'rounded' ? '' : 'none';
+                var radius = shape === 'circle' ? '9999px' : (shape === 'square' ? '0' : (document.getElementById('csw-btn-radius').value || 0) + 'px');
+                var ic = icons();
+                var bgN = rgba(fieldText('button_bg'), parseInt(document.getElementById('csw-bg-transparency').value, 10));
+                var colN = rgba(fieldText('button_color'), parseInt(document.getElementById('csw-color-transparency').value, 10));
+                var bgS = bgN, colS = colN;
+                if (separate) {
+                    var swBg = fieldText('button_bg_switched');
+                    if (swBg) bgS = rgba(swBg, parseInt(document.getElementById('csw-bg-transparency-sw').value, 10));
+                    var swCol = fieldText('button_color_switched');
+                    if (swCol) colS = rgba(swCol, parseInt(document.getElementById('csw-color-transparency-sw').value, 10));
+                }
+                [['csw-preview-normal', ic[0], bgN, colN], ['csw-preview-switched', ic[1], bgS, colS]].forEach(function (pair) {
+                    var b = document.getElementById(pair[0]);
+                    b.innerHTML = iconHtml(pair[1]);
+                    b.style.background = pair[2];
+                    b.style.color = pair[3];
+                    b.style.fontSize = (document.getElementById('csw-font-size').value || 22) + 'px';
+                    b.style.fontWeight = document.getElementById('csw-font-weight').value || '';
+                    b.style.fontFamily = document.getElementById('csw-font-family').value || '';
+                    b.style.width = (document.getElementById('csw-btn-size').value || 48) + 'px';
+                    b.style.height = (document.getElementById('csw-btn-size').value || 48) + 'px';
+                    b.style.borderRadius = radius;
+                    b.style.border = '1px solid rgba(0,0,0,.2)';
+                    b.style.cursor = 'pointer';
+                    b.style.lineHeight = '1';
+                    b.style.display = 'inline-flex';
+                    b.style.alignItems = 'center';
+                    b.style.justifyContent = 'center';
+                    b.style.padding = '0 10px';
+                });
+            }
+            form.addEventListener('input', update);
+            form.addEventListener('change', update);
+            update();
         })();
         </script>
 
@@ -665,12 +976,13 @@ function csw_settings_page() {
             'import_cap' => __('Import cancelled: it would exceed the preset limit. Please delete some presets first.', 'color-switch'),
             'import_format' => __('Import failed: the file format was not recognized.', 'color-switch'),
             'notfound' => __('The preset was not found.', 'color-switch'),
+            'apply_failed' => __('Applying the preset failed: the saved values could not be verified.', 'color-switch'),
         );
         if ($notice !== '' && isset($messages[$notice])): ?>
         <div class="notice notice-<?php echo in_array($notice, array('saved', 'applied', 'deleted', 'imported'), true) ? 'success' : 'warning'; ?> is-dismissible"><p><?php echo esc_html($messages[$notice]); ?></p></div>
         <?php endif; ?>
         <h2><?php echo esc_html(__('Save the current rules as a preset', 'color-switch')); ?></h2>
-        <p class="description"><?php echo esc_html(__('A preset stores the current rules and exceptions. Button settings are not included.', 'color-switch')); ?></p>
+        <p class="description"><?php echo esc_html(__('A preset stores the current rules (including their On/Off states) and exceptions. Button settings are not included.', 'color-switch')); ?></p>
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
             <?php wp_nonce_field('csw_preset_action'); ?>
             <input type="hidden" name="action" value="csw_preset_action">
@@ -756,9 +1068,20 @@ add_action('admin_post_csw_preset_action', function () {
         exit;
     }
     if ($op === 'apply' || $op === 'delete') {
-        $id = isset($_POST['preset_id']) ? sanitize_text_field(wp_unslash($_POST['preset_id'])) : '';
-        $ok = ($op === 'apply') ? csw_preset_apply($id) : csw_preset_delete($id);
-        wp_safe_redirect($back . '&csw_notice=' . ($ok ? ($op === 'apply' ? 'applied' : 'deleted') : 'notfound'));
+        $id = isset($_POST['preset_id']) ? trim(sanitize_text_field(wp_unslash($_POST['preset_id']))) : '';
+        if ($op === 'apply') {
+            $r = csw_preset_apply($id);
+            if ($r === true) {
+                // Land on the Rules tab so the replaced rules (and their On/Off
+                // states) are visible right away.
+                wp_safe_redirect(admin_url('options-general.php?page=color-switch&tab=rules&csw_notice=applied'));
+                exit;
+            }
+            wp_safe_redirect($back . '&csw_notice=' . ($r === 'notfound' ? 'notfound' : 'apply_failed'));
+            exit;
+        }
+        $ok = csw_preset_delete($id);
+        wp_safe_redirect($back . '&csw_notice=' . ($ok ? 'deleted' : 'notfound'));
         exit;
     }
     if ($op === 'export') {
@@ -798,18 +1121,78 @@ function csw_icons($s) {
     switch ($s['icon_preset']) {
         case 'emoji_moon': return array('🌙', '🌙');
         case 'unicode':    return array('☾', '☀');
-        case 'text':       return array(__('Dark', 'color-switch'), __('Light', 'color-switch'));
         case 'custom':     return array($s['icon_custom_light'], $s['icon_custom_dark']);
         default:           return array('🌙', '☀️'); // emoji_auto
     }
 }
 
+/* A custom icon value that looks like Font Awesome classes
+   (e.g. "fa-solid fa-moon", "fas fa-sun", "fa fa-moon"). */
+function csw_is_fa_class($v) {
+    $v = trim((string) $v);
+    return (bool) preg_match('/(^|\s)fa[srldb]?(\s|$)/', $v) || (bool) preg_match('/(^|\s)fa-[a-z0-9-]+/', $v);
+}
+
+function csw_icon_html($v) {
+    $v = trim((string) $v);
+    if (csw_is_fa_class($v)) return '<i class="' . esc_attr($v) . '" aria-hidden="true"></i>';
+    return esc_html($v);
+}
+
+/* A color as CSS: hex + transparency, or the raw keyword/value. */
+function csw_color_css($value, $transparency) {
+    $v = (string) $value;
+    $t = max(0, min(100, intval($transparency)));
+    if (preg_match('/^#[0-9a-fA-F]{6}$/', $v)) {
+        if ($t <= 0) return $v;
+        $r = hexdec(substr($v, 1, 2)); $g = hexdec(substr($v, 3, 2)); $b = hexdec(substr($v, 5, 2));
+        $a = 1 - $t / 100;
+        return 'rgba(' . $r . ',' . $g . ',' . $b . ',' . rtrim(rtrim(sprintf('%.2f', $a), '0'), '.') . ')';
+    }
+    return $v;
+}
+
+/* Button background as CSS: hex + transparency, or the raw keyword. */
+function csw_button_bg_css($s) {
+    return csw_color_css($s['button_bg'], $s['button_bg_transparency']);
+}
+
+/* Effective switched-state colors: the switched values when separate
+   colors are enabled and set, otherwise the normal-state values. */
+function csw_button_bg_switched_css($s) {
+    if (!empty($s['button_colors_separate']) && (string) $s['button_bg_switched'] !== '') {
+        return csw_color_css($s['button_bg_switched'], $s['button_bg_transparency_switched']);
+    }
+    return csw_button_bg_css($s);
+}
+
+function csw_button_color_css($s) {
+    return csw_color_css($s['button_color'], $s['button_color_transparency']);
+}
+
+function csw_button_color_switched_css($s) {
+    if (!empty($s['button_colors_separate']) && (string) $s['button_color_switched'] !== '') {
+        return csw_color_css($s['button_color_switched'], $s['button_color_transparency_switched']);
+    }
+    return csw_button_color_css($s);
+}
+
+function csw_button_radius_css($s) {
+    switch ($s['button_shape']) {
+        case 'square':  return '0';
+        case 'rounded': return max(0, min(60, intval($s['button_radius']))) . 'px';
+        default:        return '9999px'; // circle
+    }
+}
+
 function csw_position_css($s) {
+    $x = max(0, min(200, intval($s['position_offset_x'])));
+    $y = max(0, min(200, intval($s['position_offset_y'])));
     switch ($s['position']) {
-        case 'bottom_left': return 'left:16px;bottom:16px;';
-        case 'top_right':   return 'right:16px;top:16px;';
-        case 'top_left':    return 'left:16px;top:16px;';
-        default:            return 'right:16px;bottom:16px;';
+        case 'bottom_left': return 'left:' . $x . 'px;bottom:' . $y . 'px;';
+        case 'top_right':   return 'right:' . $x . 'px;top:' . $y . 'px;';
+        case 'top_left':    return 'left:' . $x . 'px;top:' . $y . 'px;';
+        default:            return 'right:' . $x . 'px;bottom:' . $y . 'px;';
     }
 }
 
@@ -839,8 +1222,12 @@ add_action('wp_head', function () {
     (function () {
         try {
             var saved = localStorage.getItem('csw-mode');
-            var mode = saved || <?php echo wp_json_encode($s['default_mode']); ?>;
-            var dark = mode === 'dark' || (mode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            var mode = saved;
+            if (!mode) {
+                if (<?php echo !empty($s['os_dark_auto']) ? 'true' : 'false'; ?> && window.matchMedia('(prefers-color-scheme: dark)').matches) mode = 'dark';
+                else mode = <?php echo wp_json_encode($s['default_mode'] === 'switched' ? 'dark' : 'light'); ?>;
+            }
+            var dark = mode === 'dark';
             if (dark) document.documentElement.classList.add('dark-mode');
         } catch (e) {}
     })();
@@ -855,8 +1242,10 @@ add_action('wp_head', function () {
     ?>
     <style id="color-switch-css">
     :root {
-        --csw-btn-bg: <?php echo esc_html($s['button_bg']); ?>;
-        --csw-btn-color: <?php echo esc_html($s['button_color']); ?>;
+        --csw-btn-bg: <?php echo esc_html(csw_button_bg_css($s)); ?>;
+        --csw-btn-color: <?php echo esc_html(csw_button_color_css($s)); ?>;
+        --csw-btn-bg-sw: <?php echo esc_html(csw_button_bg_switched_css($s)); ?>;
+        --csw-btn-color-sw: <?php echo esc_html(csw_button_color_switched_css($s)); ?>;
     }
     html.dark-mode { color-scheme: dark; }
     <?php // List order is priority order: emit in reverse so the top rule is printed last and wins ties (same specificity, both !important). ?>
@@ -885,12 +1274,18 @@ add_action('wp_head', function () {
     <?php endif; ?>
 
     .csw-toggle-btn {
-        min-width: 48px; height: 48px; padding: 0 10px; border-radius: 9999px;
+        width: <?php echo intval($s['button_size']); ?>px; height: <?php echo intval($s['button_size']); ?>px; padding: 0 10px; border-radius: <?php echo esc_html(csw_button_radius_css($s)); ?>;
         border: 1px solid rgba(0,0,0,.2); cursor: pointer;
         background: var(--csw-btn-bg); color: var(--csw-btn-color);
-        font-size: 22px; line-height: 1;
+        font-size: <?php echo intval($s['button_font_size']); ?>px; line-height: 1;
+        <?php if ($s['button_font_weight'] !== ''): ?>font-weight: <?php echo esc_html($s['button_font_weight']); ?>;<?php endif; ?>
+        <?php if ($s['button_font_family'] !== ''): ?>font-family: <?php echo esc_html($s['button_font_family']); ?>;<?php endif; ?>
         display: inline-flex; align-items: center; justify-content: center;
     }
+    html.dark-mode .csw-toggle-btn { background: var(--csw-btn-bg-sw); color: var(--csw-btn-color-sw); }
+    .csw-toggle-btn .csw-ic-switched { display: none; }
+    html.dark-mode .csw-toggle-btn .csw-ic-switched { display: inline; }
+    html.dark-mode .csw-toggle-btn .csw-ic-normal { display: none; }
     #csw-toggle {
         position: fixed; z-index: 99999; <?php echo csw_position_css($s); ?>
         box-shadow: 0 4px 16px rgba(0,0,0,.25);
@@ -902,7 +1297,10 @@ add_action('wp_head', function () {
 function csw_button_html($s, $id) {
     list($iconLight, $iconDark) = csw_icons($s);
     $idAttr = $id ? ' id="' . esc_attr($id) . '"' : '';
-    return '<button' . $idAttr . ' type="button" class="csw-toggle-btn" aria-label="' . esc_attr(__('Color scheme toggle', 'color-switch')) . '" title="' . esc_attr(__('Color scheme toggle', 'color-switch')) . '" data-icon-light="' . esc_attr($iconLight) . '" data-icon-dark="' . esc_attr($iconDark) . '">' . esc_html($iconLight) . '</button>';
+    return '<button' . $idAttr . ' type="button" class="csw-toggle-btn" aria-label="' . esc_attr(__('Color scheme toggle', 'color-switch')) . '" title="' . esc_attr(__('Color scheme toggle', 'color-switch')) . '">'
+        . '<span class="csw-ic-normal">' . csw_icon_html($iconLight) . '</span>'
+        . '<span class="csw-ic-switched">' . csw_icon_html($iconDark) . '</span>'
+        . '</button>';
 }
 
 add_action('wp_footer', function () {
@@ -917,7 +1315,6 @@ add_action('wp_footer', function () {
         function sync() {
             var isDark = document.documentElement.classList.contains('dark-mode');
             btns.forEach(function (b) {
-                b.textContent = isDark ? b.dataset.iconDark : b.dataset.iconLight;
                 b.setAttribute('aria-pressed', isDark ? 'true' : 'false');
             });
         }
