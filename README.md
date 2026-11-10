@@ -40,6 +40,10 @@ Available in English and Japanese.
 
 ## リリースノート / Release Notes
 
+- v1.1.0 — ボタンの横幅・縦幅を個別に指定できるようにした（横長ボタン対応）
+
+- v1.1.0 — Button width and height can now be set separately (wide buttons supported)
+
 - v1.0.0 — 初版
 
 - v1.0.0 — First release

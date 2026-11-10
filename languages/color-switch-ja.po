@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: ColorSwitch 1.0.0\n"
+"Project-Id-Version: ColorSwitch 1.1.0\n"
 "Language: ja\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -51,11 +51,14 @@ msgstr "右下（フローティング）"
 msgid "Button"
 msgstr "ボタン"
 
+msgid "Button height"
+msgstr "ボタンの縦幅"
+
 msgid "Button shape"
 msgstr "ボタンの形状"
 
-msgid "Button size"
-msgstr "ボタンサイズ"
+msgid "Button width"
+msgstr "ボタンの横幅"
 
 msgid "Circle"
 msgstr "丸"

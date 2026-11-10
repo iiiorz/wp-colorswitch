@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ColorSwitch
  * Description: A theme-independent color scheme (dark mode) toggle plugin. Everything is a rule: selector × colors, with exceptions, memos and user presets.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: iiiiorz
  * License: GPL-2.0-or-later
  * Text Domain: color-switch
@@ -105,7 +105,9 @@ function csw_defaults() {
         'button_font_size' => 22,      // px
         'button_font_weight' => '',    // '' = theme default, or 300..900 / normal / bold
         'button_font_family' => '',    // '' = theme default
-        'button_size' => 48,           // px (width and height)
+        'button_size' => 48,           // px (legacy single size, kept as the migration source)
+        'button_width' => 48,          // px
+        'button_height' => 48,         // px
         'button_shape' => 'circle',    // circle|rounded|square
         'button_radius' => 12,         // px, used when shape = rounded
         'icon_preset' => 'emoji_auto', // emoji_auto|emoji_moon|unicode|custom
@@ -205,6 +207,9 @@ function csw_settings() {
         $saved['os_dark_auto'] = $legacy['os_dark_auto'];
     }
     $s = array_merge(csw_defaults(), $saved);
+    // Migrate the legacy single button_size to separate width/height.
+    if (!isset($saved['button_width'])) $s['button_width'] = $s['button_size'];
+    if (!isset($saved['button_height'])) $s['button_height'] = $s['button_size'];
     if ($s['icon_preset'] === 'text') $s['icon_preset'] = 'emoji_auto'; // legacy 'text' icon maps to emoji_auto
     $s['icon_custom_light'] = csw_txt_decode($s['icon_custom_light']);
     $s['icon_custom_dark'] = csw_txt_decode($s['icon_custom_dark']);
@@ -364,6 +369,12 @@ function csw_sanitize($input) {
     }
     if (isset($input['button_size'])) {
         $out['button_size'] = max(24, min(120, intval($input['button_size'])));
+    }
+    if (isset($input['button_width'])) {
+        $out['button_width'] = max(24, min(600, intval($input['button_width'])));
+    }
+    if (isset($input['button_height'])) {
+        $out['button_height'] = max(24, min(200, intval($input['button_height'])));
     }
     if (isset($input['button_shape']) && in_array($input['button_shape'], array('circle', 'rounded', 'square'), true)) {
         $out['button_shape'] = $input['button_shape'];
@@ -823,8 +834,12 @@ function csw_settings_page() {
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php echo esc_html(__('Button size', 'color-switch')); ?></th>
-                    <td><input type="number" name="<?php echo CSW_OPTION; ?>[button_size]" id="csw-btn-size" value="<?php echo esc_attr($s['button_size']); ?>" min="24" max="120" step="1" style="width:80px"> px</td>
+                    <th scope="row"><?php echo esc_html(__('Button width', 'color-switch')); ?></th>
+                    <td><input type="number" name="<?php echo CSW_OPTION; ?>[button_width]" id="csw-btn-width" value="<?php echo esc_attr($s['button_width']); ?>" min="24" max="600" step="1" style="width:80px"> px</td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php echo esc_html(__('Button height', 'color-switch')); ?></th>
+                    <td><input type="number" name="<?php echo CSW_OPTION; ?>[button_height]" id="csw-btn-height" value="<?php echo esc_attr($s['button_height']); ?>" min="24" max="200" step="1" style="width:80px"> px</td>
                 </tr>
                 <tr>
                     <th scope="row"><?php echo esc_html(__('Button shape', 'color-switch')); ?></th>
@@ -953,8 +968,9 @@ function csw_settings_page() {
                     b.style.fontSize = (document.getElementById('csw-font-size').value || 22) + 'px';
                     b.style.fontWeight = document.getElementById('csw-font-weight').value || '';
                     b.style.fontFamily = document.getElementById('csw-font-family').value || '';
-                    b.style.width = (document.getElementById('csw-btn-size').value || 48) + 'px';
-                    b.style.height = (document.getElementById('csw-btn-size').value || 48) + 'px';
+                    b.style.width = (document.getElementById('csw-btn-width').value || 48) + 'px';
+                    b.style.height = (document.getElementById('csw-btn-height').value || 48) + 'px';
+                    b.style.whiteSpace = 'nowrap';
                     b.style.borderRadius = radius;
                     b.style.border = '1px solid rgba(0,0,0,.2)';
                     b.style.cursor = 'pointer';
@@ -1282,7 +1298,8 @@ add_action('wp_head', function () {
     <?php endif; ?>
 
     .csw-toggle-btn {
-        width: <?php echo intval($s['button_size']); ?>px; height: <?php echo intval($s['button_size']); ?>px; padding: 0 10px; border-radius: <?php echo esc_html(csw_button_radius_css($s)); ?>;
+        width: <?php echo intval($s['button_width']); ?>px; height: <?php echo intval($s['button_height']); ?>px; padding: 0 10px; border-radius: <?php echo esc_html(csw_button_radius_css($s)); ?>;
+        white-space: nowrap;
         border: 1px solid rgba(0,0,0,.2); cursor: pointer;
         background: var(--csw-btn-bg); color: var(--csw-btn-color);
         font-size: <?php echo intval($s['button_font_size']); ?>px; line-height: 1;
