@@ -3,7 +3,7 @@
  * Plugin Name: ColorSwitch
  * Description: A theme-independent color scheme (dark mode) toggle plugin. Everything is a rule: selector × colors, with exceptions, memos and user presets.
  * Version: 1.1.0
- * Author: iiiiorz
+ * Author: Tayura
  * License: GPL-2.0-or-later
  * Text Domain: color-switch
  * Domain Path: /languages
