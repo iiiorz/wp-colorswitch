@@ -55,9 +55,13 @@ Available in English and Japanese.
 ## 画面イメージ / Screenshots
 
 (1) ルール / Rules
-<img width="1369" height="938" alt="Image" src="https://github.com/user-attachments/assets/55018266-37b0-47f0-b1ac-f94a833c08ba" />
+<img width="1508" height="935" alt="Rules tab" src="https://github.com/user-attachments/assets/fe0e6353-5c6c-4688-a59b-9130713fa700" />
 
-[(2)ボタン / Button](https://github.com/user-attachments/assets/e0cec9a8-6c45-49a1-b38b-8e2b2e7964d7), [(3)プリセット / Presets](https://github.com/user-attachments/assets/e0cec9a8-6c45-49a1-b38b-8e2b2e7964d7)
+(2) ボタン / Button
+<img width="788" height="1288" alt="Button tab" src="https://github.com/user-attachments/assets/a61f6b57-4353-44c0-98e0-f1eb993985ed" />
+
+(3) プリセット / Presets
+<img width="1323" height="587" alt="Presets tab" src="https://github.com/user-attachments/assets/1e5089c2-99e2-423e-9e9d-2254c7606f8f" />
 
 
 ## 支援 / Support
