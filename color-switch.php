@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ColorSwitch
  * Description: A theme-independent color scheme (dark mode) toggle plugin. Everything is a rule: selector × colors, with exceptions, memos and user presets.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: Tayura
  * License: GPL-2.0-or-later
  * Text Domain: color-switch
@@ -72,16 +72,17 @@ function csw_txt_decode($v) {
 function csw_initial_rules() {
     return array(
         array('selector' => 'body',
-              'bg' => '#242424', 'color' => '#ffffff', 'border' => '', 'enabled' => 1, 'memo' => '背景色・文字色'),
+              'bg' => '#242424', 'color' => '#ffffff', 'border' => '', 'enabled' => 1, 'memo' => __('Background and text color', 'color-switch')),
         array('selector' => 'a',
-              'bg' => '', 'color' => '#6cb2f5', 'border' => '', 'enabled' => 1, 'memo' => 'リンク'),
+              'bg' => '', 'color' => '#6cb2f5', 'border' => '', 'enabled' => 1, 'memo' => __('Link', 'color-switch')),
         array('selector' => 'a:hover',
-              'bg' => '', 'color' => '#a8cfff', 'border' => '', 'enabled' => 1, 'memo' => 'リンクホバー'),
+              'bg' => '', 'color' => '#a8cfff', 'border' => '', 'enabled' => 1, 'memo' => __('Link hover', 'color-switch')),
     );
 }
 
 function csw_default_excludes() {
-    return "pre //コードブロック\ncode //コードブロック";
+    $memo = __('Code block', 'color-switch');
+    return 'pre //' . $memo . "\n" . 'code //' . $memo;
 }
 
 function csw_defaults() {
@@ -194,6 +195,27 @@ function csw_upgrade_v1($saved) {
     return $out;
 }
 
+/* Bring a raw saved array up to the current shape: v1 conversion,
+   the legacy default_mode mapping, and the button_size -> width/height
+   migration. csw_sanitize() must apply the same migrations as the read
+   path (csw_settings()); otherwise a partial-form save silently drops
+   migrated values back to the defaults (e.g. a custom 1.0.0 button
+   size resetting to 48px when the Rules tab is saved). */
+function csw_migrated_current($saved) {
+    if (isset($saved['dark_bg']) && !isset($saved['ver'])) {
+        return csw_upgrade_v1($saved); // decoded form; the sanitizer re-encodes free text
+    }
+    $cur = $saved;
+    $legacy = csw_legacy_default_mode($cur);
+    if ($legacy !== null && !isset($cur['os_dark_auto'])) {
+        $cur['default_mode'] = $legacy['default_mode'];
+        $cur['os_dark_auto'] = $legacy['os_dark_auto'];
+    }
+    if (!isset($cur['button_width']) && isset($cur['button_size'])) $cur['button_width'] = $cur['button_size'];
+    if (!isset($cur['button_height']) && isset($cur['button_size'])) $cur['button_height'] = $cur['button_size'];
+    return $cur;
+}
+
 function csw_settings() {
     $saved = get_option(CSW_OPTION, array());
     if (!is_array($saved)) $saved = array();
@@ -229,22 +251,95 @@ function csw_store_settings($s) {
 /* ---------------- Sanitizing ---------------- */
 
 /* Allowed CSS color values: #hex / transparent / var(--name) only */
+/* Expand a 3-digit hex color (#fff) to 6 digits (#ffffff), which the
+   transparency math and the color inputs expect. */
+function csw_expand_hex($c) {
+    if (is_string($c) && preg_match('/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/', $c, $m)) {
+        return '#' . $m[1] . $m[1] . $m[2] . $m[2] . $m[3] . $m[3];
+    }
+    return $c;
+}
+
 function csw_css_color($v) {
     $v = trim((string) $v);
     if ($v === '') return '';
     $hex = sanitize_hex_color($v);
-    if ($hex) return $hex;
+    if ($hex) return csw_expand_hex($hex);
     if (strtolower($v) === 'transparent') return 'transparent';
     if (preg_match('/^var\(--[a-zA-Z0-9\-_]+\)$/', $v)) return $v;
     return '';
 }
 
-/* Allowed selector text: strip characters usable for style escape / injection */
+/* Font family names: letters, numbers, spaces, quotes, comma, dot,
+   underscore and hyphen only. Anything else (braces, semicolons,
+   slashes, parentheses...) could break the CSS declaration the value
+   is printed into, or the <style> element around it. Applied both
+   when saving and when printing, so values stored before this filter
+   existed are cleaned on output too. (esc_html() cannot be used for
+   the output: inside <style>, its &quot; entities are not decoded and
+   would break quoted family names.) */
+function csw_sanitize_font_family($v) {
+    $v = sanitize_text_field((string) $v);
+    $v = preg_replace('/[^\p{L}\p{N}\s"\',._-]/u', '', $v);
+    if ($v === null) return '';
+    return trim(preg_replace('/\s+/', ' ', $v));
+}
+
+/* Allowed selector text: strip characters usable for style escape /
+   injection. The child combinator ">" is kept on purpose: it cannot
+   break out of the <style> element (only "<" could), and removing it
+   silently changed ".menu > li" into ".menu li". CSS comments are
+   removed so a stray "/*" cannot comment out the generated CSS. */
 function csw_sanitize_selector($sel) {
     $sel = wp_strip_all_tags((string) $sel);
-    $sel = str_replace(array('{', '}', '<', '>', ';', '@'), '', $sel);
+    $sel = str_replace(array('/*', '*/'), '', $sel);
+    $sel = str_replace(array('{', '}', '<', ';', '@'), '', $sel);
     $sel = trim(preg_replace('/\s+/', ' ', $sel));
     return $sel;
+}
+
+/* Split a selector list on top-level commas only: commas inside (),
+   [] or quotes (e.g. :is(h2, h3), a[title="a,b"]) do not split. */
+function csw_split_selectors($text) {
+    $parts = array();
+    $buf = '';
+    $depth = 0;
+    $quote = '';
+    $len = strlen($text);
+    for ($i = 0; $i < $len; $i++) {
+        $ch = $text[$i];
+        if ($quote !== '') {
+            $buf .= $ch;
+            if ($ch === $quote) $quote = '';
+            continue;
+        }
+        if ($ch === '"' || $ch === "'") { $quote = $ch; $buf .= $ch; continue; }
+        if ($ch === '(' || $ch === '[') $depth++;
+        if ($ch === ')' || $ch === ']') $depth = max(0, $depth - 1);
+        if ($ch === ',' && $depth === 0) { $parts[] = $buf; $buf = ''; continue; }
+        $buf .= $ch;
+    }
+    $parts[] = $buf;
+    return $parts;
+}
+
+/* Whether (), [] and quotes are balanced. A malformed selector would
+   otherwise invalidate the whole generated rule it appears in. */
+function csw_selector_balanced($sel) {
+    $depth = 0;
+    $brack = 0;
+    $quote = '';
+    $len = strlen($sel);
+    for ($i = 0; $i < $len; $i++) {
+        $ch = $sel[$i];
+        if ($quote !== '') { if ($ch === $quote) $quote = ''; continue; }
+        if ($ch === '"' || $ch === "'") { $quote = $ch; continue; }
+        if ($ch === '(') $depth++;
+        if ($ch === ')') { $depth--; if ($depth < 0) return false; }
+        if ($ch === '[') $brack++;
+        if ($ch === ']') { $brack--; if ($brack < 0) return false; }
+    }
+    return $depth === 0 && $brack === 0 && $quote === '';
 }
 
 /*
@@ -261,9 +356,14 @@ function csw_parse_excludes($text) {
             $line = trim(substr($line, 0, $m[0][1]));
         }
         if ($line === '') continue;
-        foreach (explode(',', $line) as $p) {
+        foreach (csw_split_selectors($line) as $p) {
             $p = csw_sanitize_selector($p);
-            if ($p !== '') $out[] = $p;
+            if ($p === '') continue;
+            // A pseudo-element inside :not() is invalid and would kill
+            // every generated rule; malformed selectors are dropped too.
+            if (preg_match('/::|:(?:before|after|first-line|first-letter)(?![a-zA-Z-])/i', $p)) continue;
+            if (!csw_selector_balanced($p)) continue;
+            $out[] = $p;
         }
     }
     return array_values(array_unique($out));
@@ -306,7 +406,7 @@ function csw_sanitize($input) {
     if (!is_array($input)) $input = array();
     $saved = get_option(CSW_OPTION, array());
     if (!is_array($saved)) $saved = array();
-    $current = (isset($saved['dark_bg']) && !isset($saved['ver'])) ? array() : $saved;
+    $current = csw_migrated_current($saved);
     $out = array_merge(csw_defaults(), $current); // merge over saved values (per-tab partial forms)
 
     // The Rules tab sends rules_present + rules. A programmatic store
@@ -331,7 +431,7 @@ function csw_sanitize($input) {
     }
     if (isset($input['button_color'])) {
         $c = sanitize_hex_color($input['button_color']);
-        if ($c) $out['button_color'] = $c;
+        if ($c) $out['button_color'] = csw_expand_hex($c);
     }
     if (isset($input['button_bg_transparency'])) {
         $out['button_bg_transparency'] = max(0, min(100, intval($input['button_bg_transparency'])));
@@ -349,7 +449,7 @@ function csw_sanitize($input) {
     }
     if (isset($input['button_color_switched'])) {
         $c = sanitize_hex_color($input['button_color_switched']);
-        $out['button_color_switched'] = $c ? $c : '';
+        $out['button_color_switched'] = $c ? csw_expand_hex($c) : '';
     }
     if (isset($input['button_bg_transparency_switched'])) {
         $out['button_bg_transparency_switched'] = max(0, min(100, intval($input['button_bg_transparency_switched'])));
@@ -364,8 +464,7 @@ function csw_sanitize($input) {
         $out['button_font_weight'] = (string) $input['button_font_weight'];
     }
     if (isset($input['button_font_family'])) {
-        $ff = sanitize_text_field($input['button_font_family']);
-        $out['button_font_family'] = str_replace(array('{', '}', '<', '>', ';'), '', $ff);
+        $out['button_font_family'] = csw_sanitize_font_family($input['button_font_family']);
     }
     if (isset($input['button_size'])) {
         $out['button_size'] = max(24, min(120, intval($input['button_size'])));
@@ -439,7 +538,9 @@ function csw_presets() {
 }
 
 function csw_presets_save($list) {
-    update_option(CSW_PRESETS_OPTION, array_values($list));
+    // Presets are only ever read in the admin; keep them out of autoload.
+    update_option(CSW_PRESETS_OPTION, array_values($list), false);
+    if (function_exists('wp_set_option_autoload')) wp_set_option_autoload(CSW_PRESETS_OPTION, false);
 }
 
 /* Save the current rules + exceptions as a new preset. Returns true or 'cap'. */
@@ -483,7 +584,11 @@ function csw_preset_apply($id) {
     if (count($check['rules']) !== count($s['rules'])) return false;
     foreach ($s['rules'] as $j => $r) {
         if (!isset($check['rules'][$j]) || (string) $check['rules'][$j]['selector'] !== (string) $r['selector']
-            || (int) $check['rules'][$j]['enabled'] !== (int) $r['enabled']) return false;
+            || (int) $check['rules'][$j]['enabled'] !== (int) $r['enabled']
+            || (string) $check['rules'][$j]['bg'] !== (string) $r['bg']
+            || (string) $check['rules'][$j]['color'] !== (string) $r['color']
+            || (string) $check['rules'][$j]['border'] !== (string) $r['border']
+            || (string) $check['rules'][$j]['memo'] !== (string) $r['memo']) return false;
     }
     return (string) $check['exclude_selectors'] === (string) $s['exclude_selectors'];
 }
@@ -530,24 +635,31 @@ function csw_presets_import_data($data) {
     } else {
         return 'format';
     }
+    if (count($items) === 0) return 'format';
     $existing = csw_presets_raw();
     if (count($existing) + count($items) > CSW_PRESET_MAX) return 'cap';
     $out = array();
     foreach ($items as $it) {
         if (!is_array($it) || !isset($it['rules']) || !is_array($it['rules'])) return 'format';
-        $title = isset($it['title']) ? sanitize_text_field($it['title']) : '';
-        if ($title === '') $title = 'Imported preset';
+        $title = isset($it['title']) && is_scalar($it['title']) ? sanitize_text_field($it['title']) : '';
+        if ($title === '') $title = __('Imported preset', 'color-switch');
         $decoded_rules = array();
         foreach ($it['rules'] as $r) {
             if (!is_array($r)) continue;
-            $r['memo'] = isset($r['memo']) ? (string) $r['memo'] : '';
-            $decoded_rules[] = $r;
+            // Guard every field: a non-scalar (e.g. a nested array from a
+            // hand-edited JSON) must not reach a (string) cast downstream.
+            $clean = array();
+            foreach (array('selector', 'bg', 'color', 'border', 'memo') as $k) {
+                $clean[$k] = isset($r[$k]) && is_scalar($r[$k]) ? (string) $r[$k] : '';
+            }
+            $clean['enabled'] = !empty($r['enabled']) ? 1 : 0;
+            $decoded_rules[] = $clean;
         }
         $out[] = array(
             'id' => uniqid('p', true),
             'title' => csw_txt_encode($title),
             'rules' => csw_sanitize_rules($decoded_rules),
-            'exclude_selectors' => isset($it['exclude_selectors']) ? sanitize_textarea_field($it['exclude_selectors']) : '',
+            'exclude_selectors' => isset($it['exclude_selectors']) && is_scalar($it['exclude_selectors']) ? sanitize_textarea_field($it['exclude_selectors']) : '',
             'created' => time(),
         );
     }
@@ -914,7 +1026,7 @@ function csw_settings_page() {
             var form = document.getElementById('csw-button-form');
             var sel = document.getElementById('csw-icon-preset');
             var box = document.getElementById('csw-custom-box');
-            function isFaClass(v) { return /(^|\s)fa[srldb]?\s/.test(v) || /(^|\s)fa-[a-z0-9-]+/.test(v); }
+            function isFaClass(v) { return /(^|\s)fa[srldb]?(\s|$)/.test(v) || /(^|\s)fa-[a-z0-9-]+/.test(v); }
             function iconHtml(v) {
                 v = (v || '').trim();
                 if (isFaClass(v)) return '<i class="' + v.replace(/"/g, '') + '"></i>';
@@ -1032,7 +1144,7 @@ function csw_settings_page() {
                 <tr>
                     <td><?php echo esc_html($p['title']); ?></td>
                     <td><?php echo esc_html(count((array) $p['rules'])); ?></td>
-                    <td><?php echo esc_html(isset($p['created']) ? date_i18n(get_option('date_format'), (int) $p['created']) : ''); ?></td>
+                    <td><?php echo esc_html(isset($p['created']) ? wp_date(get_option('date_format'), (int) $p['created']) : ''); ?></td>
                     <td>
                         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline">
                             <?php wp_nonce_field('csw_preset_action'); ?>
@@ -1079,7 +1191,7 @@ function csw_settings_page() {
 /* ---------------- Preset actions ---------------- */
 
 add_action('admin_post_csw_preset_action', function () {
-    if (!current_user_can('manage_options')) wp_die('forbidden');
+    if (!current_user_can('manage_options')) wp_die(esc_html__('Sorry, you are not allowed to do that.'));
     check_admin_referer('csw_preset_action');
     $back = admin_url('options-general.php?page=color-switch&tab=preset');
     $op = isset($_POST['op']) ? sanitize_key($_POST['op']) : '';
@@ -1117,6 +1229,11 @@ add_action('admin_post_csw_preset_action', function () {
     }
     if ($op === 'import') {
         if (empty($_FILES['csw_import_file']['tmp_name']) || !is_uploaded_file($_FILES['csw_import_file']['tmp_name'])) {
+            wp_safe_redirect($back . '&csw_notice=import_format');
+            exit;
+        }
+        $fsize = filesize($_FILES['csw_import_file']['tmp_name']);
+        if ($fsize === false || $fsize > 1048576) { // preset JSON is small; refuse anything over 1 MB
             wp_safe_redirect($back . '&csw_notice=import_format');
             exit;
         }
@@ -1165,13 +1282,13 @@ function csw_icon_html($v) {
 
 /* A color as CSS: hex + transparency, or the raw keyword/value. */
 function csw_color_css($value, $transparency) {
-    $v = (string) $value;
+    $v = csw_expand_hex((string) $value); // accept values stored before 3-digit expansion existed
     $t = max(0, min(100, intval($transparency)));
     if (preg_match('/^#[0-9a-fA-F]{6}$/', $v)) {
         if ($t <= 0) return $v;
         $r = hexdec(substr($v, 1, 2)); $g = hexdec(substr($v, 3, 2)); $b = hexdec(substr($v, 5, 2));
         $a = 1 - $t / 100;
-        return 'rgba(' . $r . ',' . $g . ',' . $b . ',' . rtrim(rtrim(sprintf('%.2f', $a), '0'), '.') . ')';
+        return 'rgba(' . $r . ',' . $g . ',' . $b . ',' . rtrim(rtrim(sprintf('%.2F', $a), '0'), '.') . ')';
     }
     return $v;
 }
@@ -1232,10 +1349,21 @@ function csw_apply_exclusions($part, $excludes) {
     foreach ($excludes as $ex) {
         $suffix .= ':not(' . $ex . '):not(' . $ex . ' *)';
     }
-    if (preg_match('/^(.*?)(::[a-zA-Z][a-zA-Z-]*(\([^()]*\))?)$/', $part, $m)) {
+    if (preg_match('/^(.*?)(::[a-zA-Z][a-zA-Z-]*(\([^()]*\))?|:(?:before|after|first-line|first-letter))$/i', $part, $m)) {
         return $m[1] . $suffix . $m[2];
     }
     return $part . $suffix;
+}
+
+/* Anchor a rule selector to the switched state. Most selectors get an
+   "html.dark-mode" ancestor, but a selector that already starts with
+   the html element itself (html, html.foo, html .x, :root...) must
+   merge into it instead: "html.dark-mode html" could never match. */
+function csw_anchor_selector($part) {
+    if (strpos($part, 'html.dark-mode') === 0) return $part;
+    if (preg_match('/^html(?=$|[\s.:#\[])/', $part)) return 'html.dark-mode' . substr($part, 4);
+    if (preg_match('/^:root(?=$|[\s.:#\[])/', $part)) return 'html.dark-mode' . substr($part, 5);
+    return 'html.dark-mode ' . $part;
 }
 
 // The FOUC guard script comes first in <head>
@@ -1282,11 +1410,12 @@ add_action('wp_head', function () {
         if ($r['border'] !== '') $decls[] = 'border-color: ' . $r['border'] . ' !important;';
         if (!$decls) continue;
         $parts = array();
-        foreach (explode(',', $r['selector']) as $part) {
+        foreach (csw_split_selectors($r['selector']) as $part) {
             $part = trim($part);
             if ($part === '') continue;
+            if (!csw_selector_balanced($part)) continue;
             $part = csw_apply_exclusions($part, $excludes);
-            if (strpos($part, 'html.dark-mode') !== 0) $part = 'html.dark-mode ' . $part;
+            $part = csw_anchor_selector($part);
             $parts[] = str_replace('</', '<\/', $part);
         }
         if (!$parts) continue;
@@ -1304,7 +1433,7 @@ add_action('wp_head', function () {
         background: var(--csw-btn-bg); color: var(--csw-btn-color);
         font-size: <?php echo intval($s['button_font_size']); ?>px; line-height: 1;
         <?php if ($s['button_font_weight'] !== ''): ?>font-weight: <?php echo esc_html($s['button_font_weight']); ?>;<?php endif; ?>
-        <?php if ($s['button_font_family'] !== ''): ?>font-family: <?php echo esc_html($s['button_font_family']); ?>;<?php endif; ?>
+        <?php if ($s['button_font_family'] !== ''): ?>font-family: <?php echo csw_sanitize_font_family($s['button_font_family']); ?>;<?php endif; ?>
         display: inline-flex; align-items: center; justify-content: center;
     }
     html.dark-mode .csw-toggle-btn { background: var(--csw-btn-bg-sw); color: var(--csw-btn-color-sw); }

@@ -36,6 +36,9 @@ msgstr "OSがダークモードの場合は自動スイッチ"
 msgid "Background"
 msgstr "背景色"
 
+msgid "Background and text color"
+msgstr "背景色・文字色"
+
 msgid "Background color"
 msgstr "背景色"
 
@@ -62,6 +65,9 @@ msgstr "ボタンの横幅"
 
 msgid "Circle"
 msgstr "丸"
+
+msgid "Code block"
+msgstr "コードブロック"
 
 msgid "Color scheme toggle"
 msgstr "カラースキーム切替"
@@ -138,6 +144,9 @@ msgstr "インポートに失敗しました。ファイル形式を認識でき
 msgid "Import presets"
 msgstr "プリセットをインポート"
 
+msgid "Imported preset"
+msgstr "インポートしたプリセット"
+
 msgid "Imported presets are added to the list above. Apply one to change the current rules. If the import would exceed the preset limit, nothing is imported."
 msgstr "インポートしたプリセットは上の一覧に追加されます。適用すると現在のルールに反映されます。保存件数の上限を超える場合は何もインポートされません。"
 
@@ -149,6 +158,12 @@ msgstr "色を空欄にすると通常時と同じ色になります。"
 
 msgid "Leave empty to use the theme font. A CSS font-family value, e.g. \"Font Awesome 6 Free\", sans-serif."
 msgstr "空欄にするとテーマのフォントを使います。CSSのfont-family形式で指定できます（例: \"Font Awesome 6 Free\", sans-serif）。"
+
+msgid "Link"
+msgstr "リンク"
+
+msgid "Link hover"
+msgstr "リンクホバー"
 
 msgid "Memo"
 msgstr "メモ"
