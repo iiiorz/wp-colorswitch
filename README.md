@@ -40,6 +40,10 @@ Available in English and Japanese.
 
 ## リリースノート / Release Notes
 
+- v1.2.0 — 設定画面の下部に Ko-fi への支援リンクを追加
+
+- v1.2.0 — Added a Ko-fi support link at the bottom of the settings screen
+
 - v1.1.1 — v1.0.0 からの更新後にボタンサイズが初期値へ戻ることがある問題を修正。セレクタの子結合子（`>`）や `:is()` などが正しく扱えない問題と、引用符付きフォント名がフロントで効かない問題もあわせて修正
 
 - v1.1.1 — Fixed the button size possibly reverting to the default after upgrading from v1.0.0. Also fixed selectors using the child combinator (`>`) or `:is()` being mishandled, and quoted font-family names not applying on the front end

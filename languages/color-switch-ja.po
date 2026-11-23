@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: ColorSwitch 1.1.0\n"
+"Project-Id-Version: ColorSwitch 1.2.0\n"
 "Language: ja\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -131,6 +131,9 @@ msgstr "横オフセット"
 
 msgid "Icon"
 msgstr "アイコン"
+
+msgid "If this plugin helps you, you can support its development on %s."
+msgstr "このプラグインが役に立ったら、%s で開発を支援いただけると嬉しいです。"
 
 msgid "Images"
 msgstr "画像"

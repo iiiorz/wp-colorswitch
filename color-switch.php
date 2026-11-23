@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ColorSwitch
  * Description: A theme-independent color scheme (dark mode) toggle plugin. Everything is a rule: selector × colors, with exceptions, memos and user presets.
- * Version: 1.1.1
+ * Version: 1.2.0
  * Author: Tayura
  * License: GPL-2.0-or-later
  * Text Domain: color-switch
@@ -1184,6 +1184,8 @@ function csw_settings_page() {
             <span class="description"><?php echo esc_html(__('Imported presets are added to the list above. Apply one to change the current rules. If the import would exceed the preset limit, nothing is imported.', 'color-switch')); ?></span>
         </form>
         <?php endif; ?>
+
+        <p class="description" style="margin-top:2em"><?php printf(esc_html__('If this plugin helps you, you can support its development on %s.', 'color-switch'), '<a href="https://ko-fi.com/tayura" target="_blank" rel="noopener noreferrer">Ko-fi</a>'); ?></p>
     </div>
     <?php
 }
